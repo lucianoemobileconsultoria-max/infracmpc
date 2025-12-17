@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Visualizador Mapa PG G2 2026</title>
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+		integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+	<!-- Database & Caching Scripts -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+	<!-- Chart.js for Historical Dashboard -->
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+	<style>
+		body {
+			margin: 0;
+			padding: 0;
+			font-family: sans-serif;
+		}
+
+		#map {
+			width: 100%;
+			height: 100vh;
+			display: none;
+		}
+
+		#loader {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: #f0f0f0;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		.container {
+			background: white;
+			padding: 2rem;
+			border-radius: 8px;
+			box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+			text-align: center;
+		}
+
+		h2 {
+			color: #333;
+			margin-bottom: 1rem;
+		}
+
+		p {
+			color: #666;
+			margin-bottom: 2rem;
+		}
+
+		#fileInput {
+			display: none;
+		}
+
+		.btn {
+			background: #4CAF50;
+			color: white;
+			padding: 10px 20px;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 1rem;
+			transition: background 0.3s;
+		}
+
+		.btn:hover {
+			background: #45a049;
+		}
+
+		.leaflet-control-layers-list {
+			max-height: 80vh;
+			overflow-y: auto;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="loader">
+		<div class="container">
+			<h2>Visualizador de Mapa KML</h2>
+			<p>Selecione o arquivo <strong>Mapa PG G2 2026.kml</strong> para visualizar.</p>
+			<input type="file" id="fileInput" accept=".kml">
+			<button class="btn" onclick="document.getElementById('fileInput').click()">Selecionar Arquivo</button>
+		</div>
+	</div>
+
+	<!-- LOGIN MODAL -->
+	<div id="loginModal"
+		style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%); z-index: 3000; display: flex; justify-content: center; align-items: center; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+		<div
+			style="background: white; padding: 3rem; border-radius: 24px; width: 90%; max-width: 420px; text-align: center; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);">
+
+			<!-- Logo/Title -->
+			<div style="margin-bottom: 2rem;">
+				<h1
+					style="margin: 0; font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, #2e7d32, #66bb6a); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px;">
+					INFRA PG
+				</h1>
+				<p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem; font-weight: 500;">Sistema de Gestão de
+					Atividades</p>
+			</div>
+
+			<!-- Icon -->
+			<div style="margin-bottom: 2rem;">
+				<div
+					style="width: 80px; height: 80px; margin: 0 auto; background: linear-gradient(135deg, #43a047, #2e7d32); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(46, 125, 50, 0.3);">
+					<span style="font-size: 40px;">🔐</span>
+				</div>
+			</div>
+
+			<!-- Form -->
+			<div style="margin-bottom: 1.5rem; text-align: left;">
+				<label
+					style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">E-mail</label>
+				<input type="email" id="loginEmail" placeholder="seu@email.com"
+					style="width: 100%; padding: 14px 16px; margin-bottom: 1.2rem; box-sizing: border-box; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 1rem; transition: all 0.3s ease; outline: none;"
+					onfocus="this.style.borderColor='#43a047'; this.style.boxShadow='0 0 0 4px rgba(67, 160, 71, 0.1)'"
+					onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+
+				<label
+					style="display: block; margin-bottom: 0.5rem; color: #333; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Senha</label>
+				<input type="password" id="loginPass" placeholder="••••••••"
+					style="width: 100%; padding: 14px 16px; box-sizing: border-box; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 1rem; transition: all 0.3s ease; outline: none;"
+					onfocus="this.style.borderColor='#43a047'; this.style.boxShadow='0 0 0 4px rgba(67, 160, 71, 0.1)'"
+					onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+			</div>
+
+			<!-- Button -->
+			<button onclick="performLogin()"
+				style="width: 100%; padding: 16px; background: linear-gradient(135deg, #43a047, #2e7d32); color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(46, 125, 50, 0.3);"
+				onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(46, 125, 50, 0.4)'"
+				onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(46, 125, 50, 0.3)'">
+				ENTRAR
+			</button>
+
+			<!-- Error Message -->
+			<p id="loginError"
+				style="color: #f44336; margin-top: 1rem; display: none; font-weight: 600; font-size: 0.9rem; background: #ffebee; padding: 12px; border-radius: 8px; border-left: 4px solid #f44336;">
+			</p>
+		</div>
+	</div>
+
+	<div id="admin-controls"
+		style="position: absolute; top: 10px; left: 50px; z-index: 1000; background: white; padding: 10px; border-radius: 4px; box-shadow: 0 0 5px rgba(0,0,0,0.2);">
+		<label style="margin-right: 15px;">
+			<input type="checkbox" id="adminToggle"> 🔧 Modo Admin
+		</label>
+		<button id="btnConfig"
+			style="cursor: pointer; padding: 5px 10px; background: #2196F3; color: white; border: none; border-radius: 4px; display: none;">⚙️
+			Config</button>
+		<button id="btnUsers"
+			style="cursor: pointer; padding: 5px 10px; background: #FF9800; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">👥
+			Usuários</button>
+		<button id="btnExport"
+			style="cursor: pointer; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📥
+			Exportar Excel</button>
+		<button id="btnActivities"
+			style="cursor: pointer; padding: 5px 10px; background: #9C27B0; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📋
+			Tipos de Atividade</button>
+		<button id="btnChart"
+			style="cursor: pointer; padding: 5px 10px; background: #00BCD4; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📊
+			Gráfico</button>
+		<button onclick="performLogout()"
+			style="cursor: pointer; padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 4px; margin-left: 5px;">Sair</button>
+	</div>
+
+	<!-- USERS MANAGEMENT MODAL -->
+	<div id="usersModal"
+		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+		<div style="background: white; padding: 2rem; border-radius: 8px; width: 500px; max-width: 90%;">
+			<h3>👥 Gerenciar Usuários</h3>
+			<hr>
+			<h4>Cadastrar Novo Usuário</h4>
+			<div style="display: flex; gap: 10px; margin-bottom: 20px;">
+				<input type="email" id="newEmail" placeholder="E-mail" style="flex: 1; padding: 5px;">
+				<input type="password" id="newPass" placeholder="Senha" style="flex: 1; padding: 5px;">
+				<button onclick="createNewUser()"
+					style="background: #4CAF50; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">Criar</button>
+			</div>
+			<hr>
+			<h4>Lista de Usuários</h4>
+			<div id="usersList"
+				style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd;">
+				Carregando...
+			</div>
+			<div style="margin-top: 20px; text-align: right;">
+				<button onclick="document.getElementById('usersModal').style.display='none'"
+					style="background: #777; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Fechar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- ACTIVITIES MANAGEMENT MODAL -->
+	<div id="activitiesModal"
+		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+		<div style="background: white; padding: 2rem; border-radius: 8px; width: 500px; max-width: 90%;">
+			<h3>📋 Gerenciar Tipos de Atividade</h3>
+			<p><small>Defina as opções que aparecerão para seleção nos pontos.</small></p>
+			<hr>
+			<div style="display: flex; gap: 10px; margin-bottom: 20px;">
+				<input type="text" id="newActivityName" placeholder="Nome da Atividade (ex: Hidrojato)"
+					style="flex: 1; padding: 5px;">
+				<button onclick="addActivityType()"
+					style="background: #4CAF50; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">Adicionar</button>
+			</div>
+			<div id="activityTypesList"
+				style="max-height: 250px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; margin-bottom: 20px;">
+				Carregando...
+			</div>
+			<div style="text-align: right;">
+				<button onclick="document.getElementById('activitiesModal').style.display='none'"
+					style="background: #777; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Fechar</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- COUNTDOWN TIMER -->
+	<div id="countdownTimer"
+		style="position: fixed; top: 85px; left: 50%; transform: translateX(-50%); z-index: 1500; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-family: monospace; font-size: 14px; font-weight: bold; text-align: center; min-width: 180px; display: none;">
+		<div style="font-size: 11px; color: #666; margin-bottom: 3px;">⏱️ Tempo até Reset:</div>
+		<div id="timerDisplay" style="font-size: 20px; color: #2e7d32;">--:--:--</div>
+	</div>
+
+	<!-- CHART MODAL -->
+	<div id="chartModal"
+		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 3000; justify-content: center; align-items: center;">
+		<div
+			style="background: white; padding: 2rem; border-radius: 12px; width: 90%; max-width: 1000px; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+				<h2 style="margin: 0; color: #333;">📊 Evolução Diária das Atividades</h2>
+				<button onclick="closeChartModal()"
+					style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">✕
+					Fechar</button>
+			</div>
+			<div id="chartLoadingMsg" style="text-align: center; padding: 40px; color: #666; display: none;">
+				<p style="font-size: 18px;">📦 Carregando dados históricos...</p>
+			</div>
+			<div id="chartErrorMsg" style="text-align: center; padding: 40px; color: #f44336; display: none;">
+				<p style="font-size: 16px;"></p>
+			</div>
+			<div id="chartContainer" style="position: relative; height: 500px; display: none;">
+				<canvas id="activityChart"></canvas>
+			</div>
+		</div>
+	</div>
+
+	<!-- Config Modal -->
+	<div id="configModal"
+		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+		<div style="background: white; padding: 2rem; border-radius: 8px; width: 400px; max-width: 90%;">
+			<h3>Configuração do Banco de Dados (Firebase)</h3>
+			<p><small>Cole as chaves geradas no passo 3 do guia.</small></p>
+
+			<div style="margin-bottom: 1rem;">
+				<label>API Key:</label><br>
+				<input type="text" id="apiKeyInput" style="width: 100%; padding: 5px;">
+			</div>
+
+			<div style="margin-bottom: 1rem;">
+				<label>Project ID:</label><br>
+				<input type="text" id="projectIdInput" style="width: 100%; padding: 5px;">
+			</div>
+
+			<button onclick="saveConfig()"
+				style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Salvar
+				e Conectar</button>
+			<button onclick="document.getElementById('configModal').style.display='none'"
+				style="background: #f44336; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left: 10px;">Cancelar</button>
+		</div>
+	</div>
+
+	<div id="map"></div>
+
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+		integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+	<!-- Add Auth SDK -->
+	<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+	<script>
+		const fileInput = document.getElementById('fileInput');
+		const loader = document.getElementById('loader');
+		const mapDiv = document.getElementById('map');
+		const adminToggle = document.getElementById('adminToggle');
+		const btnConfig = document.getElementById('btnConfig');
+		const btnUsers = document.getElementById('btnUsers');
+
+		const btnExport = document.getElementById('btnExport');
+		const btnActivities = document.getElementById('btnActivities');
+
+		let isAdmin = false;
+		let db = null;
+		let auth = null;
+		let currentUser = null;
+
+		let activitiesCache = {};
+		let activityTypesCache = []; // Cache for standard activity types
+		let allPlacemarksData = []; // Store parsed KML data for export
+
+		// --- 0. AUTHENTICATION LOGIC ---
+
+		function performLogin() {
+			const email = document.getElementById('loginEmail').value;
+			const pass = document.getElementById('loginPass').value;
+			const errorMsg = document.getElementById('loginError');
+
+			errorMsg.style.display = 'none';
+
+			if (!auth) {
+				alert("Erro: Firebase não configurado! Entre como Admin primeiro se possível ou configure o código.");
+				return;
+			}
+
+			auth.signInWithEmailAndPassword(email, pass)
+				.then((userCredential) => {
+					// Logged in
+					document.getElementById('loginModal').style.display = 'none';
+					currentUser = userCredential.user;
+					console.log("User logged in:", currentUser.email);
+					checkAdminRole(currentUser.email);
+				})
+				.catch((error) => {
+					errorMsg.textContent = "Erro: " + error.message;
+					errorMsg.style.display = 'block';
+				});
+		}
+
+		function performLogout() {
+			auth.signOut().then(() => {
+				location.reload();
+			});
+		}
+
+		function checkAdminRole(email) {
+			// For simplicity in this standalone file, we'll check against a hardcoded list OR the 'users' collection
+			// Here, we enable the "Users" button if they are authenticated. 
+			// Real role checks would read from Firestore 'users/{uid}'
+
+			// Allow User Management button visibility
+			// We assume if they have the legacy password, they are Super Admins, but let's just show it.
+			// Or better: Check if the user exists in our 'users' collection with role 'admin'
+			if (db) {
+				db.collection('users').where('email', '==', email).get().then(snap => {
+					if (!snap.empty && snap.docs[0].data().role === 'admin') {
+						// is Cloud Admin
+					}
+				});
+			}
+		}
+
+		// --- 1. PERSISTENCE & CONFIG ---
+		const defaultFirebaseConfig = {
+			apiKey: "AIzaSyBj_HAse0IgJp2LiADdQkQ6DKvKemstljc",
+			authDomain: "mapag2-901fe.firebaseapp.com",
+			projectId: "mapag2-901fe",
+			storageBucket: "mapag2-901fe.firebasestorage.app",
+			messagingSenderId: "503519999904",
+			appId: "1:503519999904:web:4c2de0ff2000cf73b456c5"
+		};
+
+		const firebaseConfig = JSON.parse(localStorage.getItem('firebaseConfig')) || defaultFirebaseConfig;
+
+		if (firebaseConfig) {
+			initFirebase(firebaseConfig);
+		}
+
+		// ==== CLOUD KML STORAGE FUNCTIONS ====
+
+		function uploadKMLToCloud(kmlContent, fileName) {
+			return new Promise((resolve, reject) => {
+				if (!db) {
+					reject(new Error('Firestore not initialized'));
+					return;
+				}
+
+				const kmlData = {
+					fileName: fileName || 'map.kml',
+					fileContent: kmlContent,
+					uploadedBy: currentUser?.email || 'unknown',
+					uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+					version: Date.now() // Use timestamp as version
+				};
+
+				db.collection('system_config')
+					.doc('kml_data')
+					.set(kmlData)
+					.then(() => resolve())
+					.catch(err => reject(err));
+			});
+		}
+
+		function fetchKMLFromCloud() {
+			return new Promise((resolve, reject) => {
+				if (!db) {
+					reject(new Error('Firestore not initialized'));
+					return;
+				}
+
+				db.collection('system_config')
+					.doc('kml_data')
+					.get()
+					.then(doc => {
+						if (doc.exists) {
+							const data = doc.data();
+							resolve(data.fileContent);
+						} else {
+							reject(new Error('No KML found in cloud'));
+						}
+					})
+					.catch(err => reject(err));
+			});
+		}
+
+		// Auto-load Map (Cloud first, then local cache)
+		function autoLoadMap() {
+			console.log('🔄 Auto-loading map...');
+
+			// Try cloud first
+			if (db) {
+				fetchKMLFromCloud()
+					.then(kmlContent => {
+						console.log('✅ Loaded KML from cloud');
+						// Cache it locally
+						localforage.setItem('kmlFile', kmlContent);
+						initMap(kmlContent);
+						// Hide file selector for users
+						if (!isAdmin) {
+							loader.style.display = 'none';
+						}
+					})
+					.catch(cloudErr => {
+						console.log('⚠️ Cloud KML not available:', cloudErr.message);
+						// Fallback to local cache
+						localforage.getItem('kmlFile').then(function (value) {
+							if (value) {
+								console.log("✅ Loading cached KML from local storage");
+								initMap(value);
+							} else {
+								console.log('📄 No map data found. Showing file selector.');
+								// Only show file selector if admin
+								if (!isAdmin && !currentUser) {
+									loader.querySelector('.container p').textContent = 'Aguardando administrador carregar o mapa...';
+									loader.querySelector('.btn').style.display = 'none';
+								}
+							}
+						});
+					});
+			} else {
+				// DB not ready, use local cache
+				localforage.getItem('kmlFile').then(function (value) {
+					if (value) {
+						console.log("✅ Loading cached KML (offline mode)");
+						initMap(value);
+					}
+				});
+			}
+		}
+
+		// Call autoLoadMap after a short delay to let DB initialize
+		setTimeout(() => {
+			autoLoadMap();
+		}, 1000);
+
+		// Toggle Admin Logic
+		adminToggle.addEventListener('change', (e) => {
+			if (e.target.checked) {
+				const password = prompt("Digite a senha de administrador:");
+				if (password === "789512") {
+					isAdmin = true;
+					btnConfig.style.display = 'inline-block';
+					btnUsers.style.display = 'inline-block'; // Show user management
+					btnExport.style.display = 'inline-block';
+					btnActivities.style.display = 'inline-block';
+					btnChart.style.display = 'inline-block';
+					alert("Modo Admin ativado! ✅");
+				} else {
+					e.target.checked = false;
+					isAdmin = false;
+					btnConfig.style.display = 'none';
+					btnUsers.style.display = 'none';
+					btnExport.style.display = 'none';
+					btnChart.style.display = 'none';
+					alert("Senha incorreta! ❌");
+				}
+			} else {
+				isAdmin = false;
+				btnConfig.style.display = 'none';
+				btnUsers.style.display = 'none';
+				btnExport.style.display = 'none';
+				btnActivities.style.display = 'none';
+				btnChart.style.display = 'none';
+			}
+			map.closePopup();
+		});
+
+		// Config Modal
+		btnConfig.addEventListener('click', () => {
+			document.getElementById('configModal').style.display = 'flex';
+			if (firebaseConfig) {
+				document.getElementById('apiKeyInput').value = firebaseConfig.apiKey;
+				document.getElementById('projectIdInput').value = firebaseConfig.projectId;
+			}
+		});
+
+		// Users Modal
+		btnUsers.addEventListener('click', () => {
+			document.getElementById('usersModal').style.display = 'flex';
+			loadUsersList();
+		});
+
+		// Activities Modal
+		btnActivities.addEventListener('click', () => {
+			document.getElementById('activitiesModal').style.display = 'flex';
+			renderActivityTypesList();
+		});
+
+		function saveConfig() {
+			const apiKey = document.getElementById('apiKeyInput').value.trim();
+			const projectId = document.getElementById('projectIdInput').value.trim();
+
+			if (!apiKey || !projectId) return alert("Preencha ambos os campos!");
+
+			const config = { apiKey, projectId, authDomain: `${projectId}.firebaseapp.com`, projectId };
+			localStorage.setItem('firebaseConfig', JSON.stringify(config));
+
+			initFirebase(config);
+			document.getElementById('configModal').style.display = 'none';
+			alert("Configuração salva! Recarregando página...");
+			location.reload();
+		}
+
+		// --- ICONS ---
+		const greenIcon = new L.Icon({
+			iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+			shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+			iconSize: [25, 41],
+			iconAnchor: [12, 41],
+			popupAnchor: [1, -34],
+			shadowSize: [41, 41]
+		});
+
+		const redIcon = new L.Icon({
+			iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+			shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+			iconSize: [25, 41],
+			iconAnchor: [12, 41],
+			popupAnchor: [1, -34],
+			shadowSize: [41, 41]
+		});
+
+		const orangeIcon = new L.Icon({
+			iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+			shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+			iconSize: [25, 41],
+			iconAnchor: [12, 41],
+			popupAnchor: [1, -34],
+			shadowSize: [41, 41]
+		});
+
+		let markersMap = {}; // Key: lat_lng -> Marker Object
+
+		function updateMarkerIcon(lat, lng, status) {
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const marker = markersMap[key];
+			if (marker) {
+				if (marker) {
+					if (status === 'done') {
+						marker.setIcon(greenIcon);
+					} else if (status === 'partial') {
+						marker.setIcon(orangeIcon);
+					} else {
+						marker.setIcon(redIcon);
+					}
+				}
+			}
+		}
+
+		function initFirebase(config) {
+			try {
+				if (!firebase.apps.length) {
+					firebase.initializeApp(config);
+					db = firebase.firestore();
+					auth = firebase.auth();
+					console.log("Firebase Connected");
+
+					// Listen for Auth State
+					auth.onAuthStateChanged((user) => {
+						if (user) {
+							// User is signed in.
+							document.getElementById('loginModal').style.display = 'none';
+							currentUser = user;
+						} else {
+							// No user is signed in.
+							document.getElementById('loginModal').style.display = 'flex';
+						}
+					});
+
+					// Realtime Listener for Activities
+					db.collection("activities").onSnapshot((snapshot) => {
+						snapshot.docChanges().forEach((change) => {
+							const data = change.doc.data();
+							activitiesCache[change.doc.id] = data; // Store full object now
+
+							// Update Icon Realtime
+							if (data.lat && data.lng) {
+								updateMarkerIcon(data.lat, data.lng, data.status);
+							}
+						});
+						// Update stats after data changes
+						updateStats();
+					});
+
+					// Listener for Activity Types
+					db.collection("activity_types").orderBy("name").onSnapshot((snapshot) => {
+						activityTypesCache = [];
+						snapshot.forEach((doc) => {
+							activityTypesCache.push({ id: doc.id, ...doc.data() });
+						});
+						renderActivityTypesList(); // Refresh list if open
+					});
+				}
+			} catch (e) {
+				console.error("Firebase Error:", e);
+				alert("Erro ao conectar no Firebase.");
+			}
+		}
+
+		// --- USER MANAGEMENT LOGIC (Secondary App) ---
+		function createNewUser() {
+			const email = document.getElementById('newEmail').value;
+			const pass = document.getElementById('newPass').value;
+
+			if (!email || !pass) return alert("Preencha e-mail e senha.");
+
+			// Create a secondary app to avoid logging out the current admin
+			const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
+
+			secondaryApp.auth().createUserWithEmailAndPassword(email, pass)
+				.then((userCredential) => {
+					// Created! Now save reference to Firestore so we can list it
+					db.collection('users').doc(userCredential.user.uid).set({
+						email: email,
+						role: 'user',
+						createdAt: firebase.firestore.FieldValue.serverTimestamp()
+					}).then(() => {
+						alert(`Usuário ${email} criado com sucesso!`);
+						secondaryApp.delete(); // Cleanup
+						loadUsersList(); // Refresh list
+						document.getElementById('newEmail').value = "";
+						document.getElementById('newPass').value = "";
+					});
+				})
+				.catch((error) => {
+					alert("Erro ao criar: " + error.message);
+					secondaryApp.delete();
+				});
+		}
+
+		function loadUsersList() {
+			const listDiv = document.getElementById('usersList');
+			listDiv.innerHTML = "Carregando...";
+
+			db.collection('users').get().then((querySnapshot) => {
+				listDiv.innerHTML = "";
+				if (querySnapshot.empty) {
+					listDiv.innerHTML = "Nenhum usuário encontrado.";
+					return;
+				}
+
+				querySnapshot.forEach((doc) => {
+					const u = doc.data();
+					const div = document.createElement('div');
+					div.style.padding = "5px";
+					div.style.borderBottom = "1px solid #eee";
+					div.innerHTML = `Running <b>${u.email}</b> (${u.role || 'user'})`;
+					listDiv.appendChild(div);
+				});
+			});
+		}
+
+		// --- ACTIVITIES TYPES CRUD ---
+		function addActivityType() {
+			const name = document.getElementById('newActivityName').value.trim();
+			if (!name) return alert("Digite um nome!");
+
+			if (db) {
+				db.collection("activity_types").add({
+					name: name,
+					createdAt: firebase.firestore.FieldValue.serverTimestamp()
+				}).then(() => {
+					document.getElementById('newActivityName').value = "";
+				}).catch(err => alert("Erro ao salvar: " + err.message));
+			} else {
+				// Local fallback
+				activityTypesCache.push({ id: Date.now().toString(), name: name });
+				localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+				renderActivityTypesList();
+				document.getElementById('newActivityName').value = "";
+			}
+		}
+
+		function deleteActivityType(id) {
+			if (confirm("Tem certeza que deseja excluir?")) {
+				if (db) {
+					db.collection("activity_types").doc(id).delete();
+				} else {
+					activityTypesCache = activityTypesCache.filter(a => a.id !== id);
+					localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+					renderActivityTypesList();
+				}
+			}
+		}
+
+		function renderActivityTypesList() {
+			const listDiv = document.getElementById('activityTypesList');
+			listDiv.innerHTML = "";
+
+			if (!db) {
+				// Load from local if no DB
+				const local = localStorage.getItem('localActivityTypes');
+				if (local) activityTypesCache = JSON.parse(local);
+			}
+
+			if (activityTypesCache.length === 0) {
+				listDiv.innerHTML = "<p style='text-align:center; color:#777;'>Nenhum tipo cadastrado.</p>";
+				return;
+			}
+
+			activityTypesCache.sort((a, b) => a.name.localeCompare(b.name)).forEach(act => {
+				const div = document.createElement('div');
+				div.style.padding = "8px";
+				div.style.borderBottom = "1px solid #eee";
+				div.style.display = "flex";
+				div.style.justifyContent = "space-between";
+				div.style.alignItems = "center";
+				div.innerHTML = `
+					<span>${act.name}</span>
+					<button onclick="deleteActivityType('${act.id}')" style="background:none; border:none; color:red; cursor:pointer;">🗑️</button>
+				`;
+				listDiv.appendChild(div);
+			});
+		}
+
+		// --- EXPORT LOGIC ---
+		btnExport.addEventListener('click', () => {
+			if (!allPlacemarksData.length) {
+				alert("O mapa ainda não carregou os pontos ou está vazio.");
+				return;
+			}
+
+			let csvContent = "data:text/csv;charset=utf-8,";
+			// BOM for Excel to read UTF-8 correctly
+			csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+			csvContent += "Nome do Local;Latitude;Longitude;Status;Atividade (Descrição);Realizado Por;Data/Hora Conclusão;Recado Técnico\n";
+
+			allPlacemarksData.forEach(item => {
+				const lat = item.lat;
+				const lng = item.lng;
+				const name = item.name.replace(/;/g, ","); // Sanitize for CSV
+
+				const data = getActivityData(lat, lng);
+
+				let status = "Pendente";
+				let activity = "";
+				let user = "";
+				let date = "";
+				let note = "";
+
+				if (data) {
+					// Data might be string (legacy) or object
+					if (typeof data === 'string') {
+						activity = data.replace(/;/g, ",");
+					} else {
+						// NEW LOGIC: Combine selected activities + manual text
+						const selected = (data.selectedActivities || []).join(", ");
+						const manual = (data.text || "");
+						activity = [selected, manual].filter(Boolean).join(" | ").replace(/;/g, ",");
+
+						if (data.status === 'done') {
+							status = "Concluído";
+							user = data.completedBy || "";
+							date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : "";
+							note = (data.userNote || "").replace(/;/g, ",");
+						}
+					}
+				}
+
+				// CSV Row
+				csvContent += `${name};${lat};${lng};${status};${activity};${user};${date};${note}\n`;
+			});
+
+			const encodedUri = encodeURI(csvContent);
+			const link = document.createElement("a");
+			link.setAttribute("href", encodedUri);
+			link.setAttribute("download", "relatorio_mapa.csv");
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		});
+
+		// --- 2. DATA LOGIC ---
+		// --- 2. DATA LOGIC ---
+
+		// Unified helper to get Activity Data (Object)
+		function getActivityData(lat, lng) {
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+
+			// 1. Try Memory Cache
+			if (activitiesCache[key]) {
+				return activitiesCache[key];
+			}
+
+			// 2. Try LocalStorage
+			const local = localStorage.getItem(key);
+			if (local) {
+				try {
+					// Check if it's JSON (Old text-only might be just string?)
+					// Our new saves are JSON. Old legacy were plain text.
+					// Simple heuristic: starts with {
+					if (local.trim().startsWith('{')) {
+						const parsed = JSON.parse(local);
+						activitiesCache[key] = parsed; // Populate cache
+						return parsed;
+					} else {
+						// Legacy string format
+						return { text: local, status: 'pending' };
+					}
+				} catch (e) {
+					// Fallback
+					return { text: local, status: 'pending' };
+				}
+			}
+
+			return null;
+		}
+
+		// Deprecated alias for compatibility if referenced elsewhere
+		function getActivity(lat, lng) {
+			return getActivityData(lat, lng);
+		}
+
+		function saveActivity(lat, lng) {
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+
+			// Get manual text
+			const text = document.getElementById('activityInput').value;
+
+			// Get checked boxes
+			const checkboxes = document.querySelectorAll('.activity-checkbox:checked');
+			const selectedActivities = Array.from(checkboxes).map(cb => cb.value);
+
+			const payload = {
+				text: text,
+				selectedActivities: selectedActivities,
+				lat: lat,
+				lng: lng,
+				updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+			};
+
+			// Update Cache & Stats Immediately (for optimistic UI / Local mode)
+			// We store the full object in cache now
+			activitiesCache[key] = payload;
+			updateMarkerIcon(lat, lng, 'pending'); // Saving resets to pending usually, unless we handled status. The payload doesn't have status 'done' unless we preserved it?
+			// Actually, if we are editing text, we are likely treating it as "pending" or preserving existing status?
+			// The logic in saveActivity doesn't read existing status. It just overwrites. 
+			// Wait, the payload definition didn't include 'status'. 
+			// If it was 'done', this save will overwrite it and make it 'undefined' (pending).
+			// We should probably preserve status if it exists.
+
+			// Let's read existing first
+			const existing = activitiesCache[key] || {};
+			if (existing.status === 'done' || existing.status === 'partial') {
+				payload.status = existing.status;
+				payload.completedBy = existing.completedBy;
+				payload.completedAt = existing.completedAt;
+				payload.userNote = existing.userNote;
+				payload.completedItems = existing.completedItems;
+			}
+
+			activitiesCache[key] = payload;
+			updateMarkerIcon(lat, lng, payload.status);
+
+			// Save to LocalStorage (Legacy/Fallback)
+			localStorage.setItem(key, JSON.stringify(payload));
+
+			if (typeof updateStats === "function") updateStats();
+
+			if (db) {
+				db.collection("activities").doc(key).set(payload, { merge: true }).then(() => {
+					// alert("Salvo na nuvem! ☁️✅"); // Optional: Remove alert for smoother UX? Keeping for confirmation.
+					map.closePopup();
+				}).catch(err => {
+					console.error(err);
+					alert("Salvo apenas localmente (Erro na nuvem). ⚠️");
+					map.closePopup();
+				});
+			} else {
+				// alert("Salvo localmente! 💾");
+				map.closePopup();
+			}
+		}
+
+		function concludeActivity(lat, lng, note) {
+			if (!currentUser) return alert("Você precisa estar logado!");
+
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const userNote = note || "";
+
+			// Collect checked items
+			const checkboxes = document.querySelectorAll('.user-check:checked');
+			const completedItems = Array.from(checkboxes).map(cb => cb.value);
+
+			// Logic to determine status
+			let status = 'done';
+
+			// Check against assigned activities
+			const activityData = getActivityData(lat, lng);
+			let totalAssigned = 0;
+			if (activityData && activityData.selectedActivities) {
+				totalAssigned = activityData.selectedActivities.length;
+			}
+
+			let debugMsg = "";
+
+			if (totalAssigned > 0) {
+				if (completedItems.length === 0) {
+					status = 'pending';
+					debugMsg = " (Nenhum item feito)";
+				} else if (completedItems.length < totalAssigned) {
+					status = 'partial';
+					debugMsg = ` (Parcial: ${completedItems.length}/${totalAssigned})`;
+				} else {
+					status = 'done';
+					debugMsg = " (Todos feitos)";
+				}
+			} else {
+				debugMsg = " (Sem lista definida, assumindo Concluído)";
+			}
+
+			if (db) {
+				db.collection("activities").doc(key).set({
+					status: status,
+					completedBy: currentUser.email,
+					completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+					userNote: userNote,
+					completedItems: completedItems
+				}, { merge: true }).then(() => {
+					// Update local cache immediately for UI responsiveness
+					const payload = activitiesCache[key] || {};
+					payload.status = status;
+					payload.completedBy = currentUser.email;
+					payload.completedItems = completedItems;
+					payload.userNote = userNote;
+					activitiesCache[key] = payload;
+					updateMarkerIcon(lat, lng, status);
+
+					const msg = status === 'partial' ? "Salvo como Parcial! 🟠" : (status === 'done' ? "Concluído! 🎉" : "Salvo como Pendente! ⚠️");
+					alert(msg);
+					map.closePopup();
+				}).catch(err => {
+					console.error(err);
+					alert("Erro ao salvar: " + err.message);
+				});
+			}
+		}
+
+
+		// --- 3. MAP LOGIC ---
+		fileInput.addEventListener('change', function (e) {
+			const file = e.target.files[0];
+			if (!file) return;
+
+			const reader = new FileReader();
+			reader.onload = function (e) {
+				const kmlContent = e.target.result;
+
+				// Cache it locally
+				localforage.setItem('kmlFile', kmlContent);
+
+				// Save to cloud if admin and DB connected
+				if (db && currentUser) {
+					console.log('📤 Uploading KML to cloud...');
+					uploadKMLToCloud(kmlContent, file.name)
+						.then(() => {
+							console.log('✅ KML saved to cloud successfully!');
+							initMap(kmlContent);
+						})
+						.catch(err => {
+							console.error('❌ Failed to upload KML to cloud:', err);
+							alert('Erro ao salvar KML na nuvem. O arquivo foi salvo localmente.');
+							initMap(kmlContent);
+						});
+				} else {
+					// Not logged in or DB not ready - just use locally
+					initMap(kmlContent);
+				}
+			};
+			reader.readAsText(file);
+		});
+
+		let map;
+
+		function initMap(kmlText) {
+			loader.style.display = 'none';
+			mapDiv.style.display = 'block';
+
+			if (map) map.remove();
+			map = L.map('map').setView([-30.134, -51.317], 16);
+
+			L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+				maxZoom: 20,
+				subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+				attribution: 'Map data &copy; Google'
+			}).addTo(map);
+
+			const parser = new DOMParser();
+			const xmlDoc = parser.parseFromString(kmlText, "text/xml");
+			const placemarks = xmlDoc.getElementsByTagName("Placemark");
+
+			const layers = {};
+			const latLngs = [];
+
+			for (let i = 0; i < placemarks.length; i++) {
+				const placemark = placemarks[i];
+				const nameNode = placemark.getElementsByTagName("name")[0];
+				const name = nameNode ? nameNode.textContent : "Sem Nome";
+				const point = placemark.getElementsByTagName("Point")[0];
+
+				if (point) {
+					const coordsNode = point.getElementsByTagName("coordinates")[0];
+					if (!coordsNode) continue;
+
+					const coordsStr = coordsNode.textContent.trim();
+					const coords = coordsStr.split(",");
+					const lng = parseFloat(coords[0]);
+					const lat = parseFloat(coords[1]);
+
+					if (isNaN(lat) || isNaN(lng)) continue;
+					latLngs.push([lat, lng]);
+
+					// Capture for Export
+					allPlacemarksData.push({
+						name: name,
+						lat: lat,
+						lng: lng
+					});
+
+					let groupName = "Outros";
+					if (name.includes(" - ")) {
+						groupName = name.split(" - ")[0].trim();
+					} else if (name.startsWith("Empresa")) {
+						groupName = "Empresa";
+					} else if (name.toLowerCase().includes("bebedouro")) {
+						groupName = "Bebedouro";
+					}
+
+					// Capture for Export & Stats (Updated with Group)
+					allPlacemarksData.push({
+						name: name,
+						lat: lat,
+						lng: lng,
+						group: groupName
+					});
+
+					// Create Marker
+					// Default to Red (Pending) unless cache says Done
+					const activityData = getActivityData(lat, lng);
+
+					// const isDone = activityData && activityData.status === 'done';
+					let initialIcon = redIcon;
+					if (activityData) {
+						if (activityData.status === 'done') initialIcon = greenIcon;
+						else if (activityData.status === 'partial') initialIcon = orangeIcon;
+					}
+					const marker = L.marker([lat, lng], { icon: initialIcon });
+
+					// Register marker for updates
+					const markerKey = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+					markersMap[markerKey] = marker;
+
+					// Dynamic Popup Function
+					marker.bindPopup(() => {
+						const data = getActivityData(lat, lng);
+
+						// Helper to get display text
+						let activityText = "";
+						let selectedList = [];
+						let userNote = "";
+
+						if (data) {
+							if (typeof data === 'string') {
+								activityText = data; // Legacy
+							} else {
+								activityText = data.text || "";
+								selectedList = data.selectedActivities || [];
+								userNote = data.userNote || "";
+							}
+						}
+
+						const isDone = data && data.status === 'done';
+						const isPartial = data && data.status === 'partial';
+						const directionsLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+						let content = `<div style="font-family: sans-serif; min-width: 280px;">
+                            <h3 style="margin-top: 0;">${name}</h3>
+                            <p style="margin: 5px 0;"><small>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}</small></p>`;
+
+						if (isAdmin) {
+							// ADMIN VIEW
+							let checkboxesHtml = "";
+							if (activityTypesCache.length > 0) {
+								checkboxesHtml += `<div style="text-align:left; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:5px; margin-bottom:5px;">`;
+								activityTypesCache.forEach(type => {
+									const isChecked = selectedList.includes(type.name) ? 'checked' : '';
+									checkboxesHtml += `
+										<label style="display:block; margin-bottom:3px; cursor:pointer;">
+											<input type="checkbox" class="activity-checkbox" value="${type.name}" ${isChecked}> ${type.name}
+										</label>`;
+								});
+								checkboxesHtml += `</div>`;
+							} else {
+								checkboxesHtml = `<p><small><i>Nenhum tipo cadastrado. Use o botão "Tipos de Atividade" no topo.</i></small></p>`;
+							}
+
+							content += `
+                                <div style="margin: 10px 0; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;">
+                                    <label><strong>📝 Atividades:</strong></label>
+									${checkboxesHtml}
+                                    <label><small>Obs / Outros:</small></label>
+                                    <textarea id="activityInput" style="width: 100%; height: 40px; margin-top: 2px;">${activityText}</textarea><br>
+                                    <div style="margin: 5px 0; display: flex; justify-content: space-between; align-items: center;">
+                                        <button onclick="saveActivity(${lat}, ${lng})" style="cursor: pointer; background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 3px;">Salvar</button>
+                                        <small style="color: #666;">${isDone ? '✅ Já Concluído' : (isPartial ? '🟠 Parcial' : '⏳ Pendente')}</small>
+                                    </div>
+                                    ${userNote ? `<div style="margin-top:5px; border-top:1px solid #eee; padding-top:5px;"><small><strong>💬 Recado do Técnico:</strong> ${userNote}</small></div>` : ''}
+                                </div>
+                            `;
+						} else {
+							// USER VIEW
+							const hasContent = selectedList.length > 0 || activityText;
+
+							if (hasContent) {
+								let displayHtml = "";
+								const completedItems = data ? (data.completedItems || []) : [];
+
+								// UNIFIED START
+								if (true) { // Unified View Wrapper
+									// Old isDone Logic Removed
+									if (true) {
+										/*
+										displayHtml += `<div style="text-align:left; margin:5px 0;">`;
+										selectedList.forEach(item => {
+											const wasDone = completedItems.includes(item);
+											displayHtml += `
+												<div style="margin-bottom:2px; color:${wasDone ? '#2e7d32' : '#777'};">
+													${wasDone ? '✅' : '🔲'} ${item}
+												</div>`;
+										});
+										displayHtml += `</div>`;
+									}
+									if (activityText) {
+										displayHtml += `<p style="margin:5px 0;"><em>${activityText}</em></p>`;
+									}
+
+									const date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
+
+									const statusTitle = isDone ? '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>' : '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
+									const bgColor = isDone ? '#e8f5e9' : '#fff3e0';
+									const borderColor = isDone ? '#4CAF50' : '#ff9800';
+
+									content += `
+										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
+											${statusTitle}<br>
+											${displayHtml}
+											${userNote ? `<br><small>💬 "<em>${userNote}</em>"</small><br>` : ''}
+											<hr style="border: 0; border-top: 1px solid #ddd; margin: 5px 0;">
+											<small>👤 <b>${data.completedBy || 'Usuário'}</b></small><br>
+											<small>🕒 ${date}</small>
+											${isPartial ? `<div style="margin-top:10px;"><button onclick="concludeActivity(${lat}, ${lng}, prompt('Nova observação?'))" style="font-size:0.8em; cursor:pointer;">Continuar / Atualizar</button></div>` : ''}
+										</div>
+									`;
+								} else {
+									// PENDING OR PARTIAL STATE (Editable)
+									if (selectedList.length > 0) {
+										displayHtml += `<div style="text-align:left; margin:5px 0; max-height:150px; overflow-y:auto;">`;
+										selectedList.forEach(item => {
+											const isChecked = completedItems.includes(item) ? 'checked' : '';
+											displayHtml += `
+												<label style="display:block; margin-bottom:5px; cursor:pointer;">
+													<input type="checkbox" class="user-check" value="${item}" ${isChecked}> ${item}
+												</label>`;
+										});
+										displayHtml += `</div>`;
+									}
+									if (activityText) {
+										displayHtml += `<div style="margin:5px 0; padding:5px; background:#fff; border:1px dashed #ccc;"><em>${activityText}</em></div>`;
+									}
+
+									const isPartialMsg = isPartial ? '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>' : '<strong>⚠️ Atividade Pendente:</strong>';
+									const bgColor = isPartial ? '#fff3e0' : '#fff3e0';
+									const borderColor = isPartial ? '#ff9800' : '#ff9800';
+
+									content += `
+										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid ${borderColor};">
+											${isPartialMsg}<br>
+											<small>Marque o que foi feito:</small>
+											${displayHtml}
+											<div style="margin-top: 10px;">
+												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
+												<button onclick="concludeActivity(${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+													${isPartial ? 'ATUALIZAR / CONCLUIR' : '✅ MARCAR COMO CONCLUÍDO'}
+												</button>
+											</div>
+										</div>
+									`;
+									*/
+									} // Close inner
+								} // Close outer
+
+								// UNIFIED LOGIC INSERTION
+								{
+									// UNIFIED EDITABLE VIEW
+									let displayHtml = "";
+									const completedItems = data ? (data.completedItems || []) : [];
+
+									// 1. Build Checkbox List (Always Editable)
+									if (selectedList.length > 0) {
+										displayHtml += `<div style="text-align:left; margin:5px 0; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:5px;">`;
+										selectedList.forEach(item => {
+											const isChecked = completedItems.includes(item) ? 'checked' : '';
+											displayHtml += `
+												<label style="display:block; margin-bottom:5px; cursor:pointer;">
+													<input type="checkbox" class="user-check" value="${item}" ${isChecked}> ${item}
+												</label>`;
+										});
+										displayHtml += `</div>`;
+									}
+
+									if (activityText) {
+										displayHtml += `<div style="margin:5px 0; padding:5px; background:#fff; border:1px dashed #ccc;"><em>${activityText}</em></div>`;
+									}
+
+									// 2. Dynamic Styling
+									let statusTitle = '<strong>⚠️ Atividade Pendente:</strong>';
+									let bgColor = '#fff3e0';
+									let borderColor = '#ff9800';
+									let btnText = '✅ MARCAR COMO CONCLUÍDO';
+									let btnColor = '#2196F3'; // Blue
+
+									if (isDone) {
+										statusTitle = '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>';
+										bgColor = '#e8f5e9';
+										borderColor = '#4CAF50';
+										btnText = 'ATUALIZAR STATUS';
+										btnColor = '#4CAF50';
+									} else if (isPartial) {
+										statusTitle = '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
+										bgColor = '#fff3e0';
+										borderColor = '#ff9800';
+										btnText = 'ATUALIZAR / CONCLUIR';
+										btnColor = '#ff9800';
+									}
+
+									const date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
+
+									content += `
+										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
+											${statusTitle}<br>
+											<div style="margin-bottom:5px;"><small>Marque os itens realizados:</small></div>
+											
+											${displayHtml}
+											
+											${(isDone || isPartial) ? `
+												<hr style="border: 0; border-top: 1px solid #ddd; margin: 5px 0;">
+												<small>👤 <b>${data.completedBy || 'Usuário'}</b></small><br>
+												<small>🕒 ${date}</small>
+											` : ''}
+
+											<div style="margin-top: 10px;">
+												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
+												<button onclick="concludeActivity(${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+													${btnText}
+												</button>
+											</div>
+										</div>
+									`;
+								}
+							} else {
+								content += `<p style="color: #777;"><em>Nenhuma atividade cadastrada.</em></p>`;
+							}
+						}
+
+						content += `
+                            <div style="margin-top: 10px; text-align: center;">
+                                <a href="${directionsLink}" target="_blank" style="display: inline-block; padding: 6px 12px; background: white; color: #4285F4; border: 1px solid #4285F4; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 0.9em;">📍 Como Chegar</a>
+                            </div>
+                        </div>`;
+
+						return content;
+					});
+
+					if (!layers[groupName]) {
+						layers[groupName] = L.layerGroup();
+					}
+					layers[groupName].addLayer(marker);
+				}
+			}
+
+			if (latLngs.length > 0) {
+				map.fitBounds(latLngs);
+			}
+
+			const overlayMaps = {};
+			const sortedKeys = Object.keys(layers).sort();
+			sortedKeys.forEach(key => {
+				overlayMaps[key] = layers[key];
+				layers[key].addTo(map);
+			});
+
+			const layerControl = L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+
+			// --- BULK TOGGLE BUTTONS ---
+			const container = document.querySelector('.leaflet-control-layers-list');
+			const buttonContainer = document.createElement('div');
+			buttonContainer.style.padding = "5px";
+			buttonContainer.style.textAlign = "center";
+			buttonContainer.style.borderBottom = "1px solid #ccc";
+			buttonContainer.style.marginBottom = "5px";
+
+			buttonContainer.innerHTML = `
+                <button onclick="toggleAllLayers(true)" style="font-size: 12px; cursor: pointer;">Min</button>
+                <button onclick="toggleAllLayers(false)" style="font-size: 12px; cursor: pointer;">Nenhum</button>
+                <button onclick="toggleAllLayers(true)" style="font-size: 12px; cursor: pointer; margin-left: 5px;">Todos</button>
+            `;
+			// Simplified: Just Todos / Nenhum is better
+			buttonContainer.innerHTML = `
+                <a href="#" onclick="toggleAllLayers(true); return false;" style="font-size: 12px; margin-right: 10px;">Marcar Todos</a>
+                <a href="#" onclick="toggleAllLayers(false); return false;" style="font-size: 12px; color: red;">Desmarcar Todos</a>
+            `;
+
+			container.insertBefore(buttonContainer, container.firstChild);
+
+			// Flag to prevent performance issues during bulk toggle
+			let isBulkUpdate = false;
+
+			window.toggleAllLayers = (show) => {
+				isBulkUpdate = true; // unique flag
+				const layerKeys = Object.keys(overlayMaps);
+				layerKeys.forEach(key => {
+					const layer = overlayMaps[key];
+					if (show) {
+						if (!map.hasLayer(layer)) map.addLayer(layer);
+					} else {
+						if (map.hasLayer(layer)) map.removeLayer(layer);
+					}
+				});
+				isBulkUpdate = false;
+				updateStats(); // Force single update after bulk toggle
+			};
+
+			// --- STATS DASHBOARD (Inside initMap) ---
+			const statsControl = L.control({ position: 'bottomright' });
+			statsControl.onAdd = function (map) {
+				const div = L.DomUtil.create('div', 'info stats');
+				div.style.background = 'white';
+				div.style.padding = '10px';
+				div.style.borderRadius = '5px';
+				div.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
+				div.style.minWidth = '200px';
+				div.style.fontFamily = 'sans-serif';
+				div.style.zIndex = '1000';
+				div.innerHTML = `
+                    <h4 style="margin: 0 0 5px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
+                    <div id="statsContent">
+                        <em>Calculando...</em>
+                    </div>
+                `;
+				return div;
+			};
+			statsControl.addTo(map);
+
+			// Listen for layer changes to update Stats
+			map.on('overlayadd', () => { if (!isBulkUpdate) updateStats(); });
+			map.on('overlayremove', () => { if (!isBulkUpdate) updateStats(); });
+
+			// Function defined INSIDE initMap to access 'layers' and 'map'
+			function updateStats() {
+				if (typeof map === 'undefined') return;
+
+				let total = 0;
+				let completed = 0;
+
+				allPlacemarksData.forEach(item => {
+					// Check visibility using the captured 'layers' object
+					if (layers[item.group] && map.hasLayer(layers[item.group])) {
+						total++;
+						const data = getActivityData(item.lat, item.lng);
+						if (data && data.status === 'done') {
+							completed++;
+						}
+					}
+				});
+
+				const pending = total - completed;
+				const percent = total > 0 ? ((completed / total) * 100).toFixed(1) : "0.0";
+
+				const html = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>📍 Total (Visível):</span> <strong>${total}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #2e7d32;">
+                        <span>✅ Concluídos:</span> <strong>${completed}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #d32f2f;">
+                        <span>⏳ Pendentes:</span> <strong>${pending}</strong>
+                    </div>
+                    
+                    <div style="background: #e0e0e0; border-radius: 4px; overflow: hidden; height: 12px; position: relative;">
+                        <div style="background: #4CAF50; width: ${percent}%; height: 100%; transition: width 0.5s ease-in-out;"></div>
+                        <span style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); font-size: 9px; line-height: 12px; color: #333; font-weight: bold;">${percent}%</span>
+                    </div>
+                `;
+
+				const container = document.getElementById('statsContent');
+				if (container) container.innerHTML = html;
+			}
+
+			// Initial Stats Update
+			updateStats();
+		}
+
+		// ===== DAILY RESET TIMER =====
+
+		function calculateTimeUntilMidnight() {
+			const now = new Date();
+			const midnight = new Date(now);
+			midnight.setHours(24, 0, 0, 0); // Next midnight
+
+			const diff = midnight - now;
+			const hours = Math.floor(diff / (1000 * 60 * 60));
+			const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+			const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+			return { hours, minutes, seconds, totalMs: diff };
+		}
+
+		function updateTimerDisplay() {
+			const time = calculateTimeUntilMidnight();
+			const display = document.getElementById('timerDisplay');
+			const timer = document.getElementById('countdownTimer');
+
+			if (!display || !timer) return;
+
+			// Format HH:MM:SS
+			const formatted = `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}:${String(time.seconds).padStart(2, '0')}`;
+			display.textContent = formatted;
+
+			// Color coding based on time remaining
+			if (time.totalMs < 30 * 60 * 1000) { // < 30 minutes
+				display.style.color = '#d32f2f'; // Red
+			} else if (time.totalMs < 60 * 60 * 1000) { // < 1 hour
+				display.style.color = '#f57c00'; // Orange
+			} else {
+				display.style.color = '#2e7d32'; // Green
+			}
+
+			// Check if midnight reached (with 1-second tolerance)
+			if (time.totalMs < 1000) {
+				performDailyReset();
+			}
+		}
+
+		// Backup current day's data to activities_history before reset
+		function backupDailyData() {
+			return new Promise((resolve, reject) => {
+				if (!db) {
+					console.warn('Firestore not initialized, skipping backup.');
+					resolve(); // Continue without backup if offline
+					return;
+				}
+
+				// Get current date in YYYY-MM-DD format
+				const now = new Date();
+				const dateStr = now.toISOString().split('T')[0]; // e.g., "2025-12-16"
+
+				console.log(`Creating backup for ${dateStr}...`);
+
+				// Collect all activity data
+				const activitiesSnapshot = {};
+				let totalActivities = 0;
+				let completed = 0;
+				let partial = 0;
+				let pending = 0;
+
+				for (const key in activitiesCache) {
+					const activity = activitiesCache[key];
+					activitiesSnapshot[key] = { ...activity };
+					totalActivities++;
+
+					// Count statistics
+					if (activity.status === 'done') completed++;
+					else if (activity.status === 'partial') partial++;
+					else pending++;
+				}
+
+				// Create backup document
+				const backupDoc = {
+					date: dateStr,
+					timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+					activities: activitiesSnapshot,
+					statistics: {
+						total: totalActivities,
+						completed: completed,
+						partial: partial,
+						pending: pending
+					}
+				};
+
+				// Save to activities_history collection
+				db.collection('activities_history')
+					.doc(dateStr)
+					.set(backupDoc)
+					.then(() => {
+						console.log(`✅ Backup saved successfully: ${totalActivities} activities`);
+						resolve();
+					})
+					.catch(err => {
+						console.error('❌ Backup failed:', err);
+						reject(err);
+					});
+			});
+		}
+
+		function performDailyReset() {
+			console.log('=== PERFORMING AUTOMATIC DAILY RESET ===');
+
+			// No confirmation needed - fully automatic
+			console.log('📦 Salvando backup automático do dia atual...');
+
+			// Step 1: Backup current data
+			backupDailyData()
+				.then(() => {
+					console.log('✅ Backup concluído. Iniciando reset automático...');
+					// Step 2: Perform reset after successful backup
+					executeReset();
+				})
+				.catch(err => {
+					console.error('❌ Erro ao fazer backup:', err);
+
+					// Log error but continue with reset anyway (automatic mode)
+					console.warn('⚠️ Backup falhou, mas continuando com reset automático.');
+					executeReset();
+				});
+		}
+
+		// Separated reset execution logic
+		function executeReset() {
+			let resetCount = 0;
+			const promises = [];
+
+			// Iterate through all activities in cache
+			for (const key in activitiesCache) {
+				const activity = activitiesCache[key];
+
+				// Preserve admin data, clear user completion data
+				const resetData = {
+					// Keep admin fields
+					text: activity.text || '',
+					selectedActivities: activity.selectedActivities || [],
+					lat: activity.lat,
+					lng: activity.lng,
+
+					// Reset user fields
+					completedItems: [],
+					status: 'pending',
+					completedBy: firebase.firestore.FieldValue.delete(),
+					completedAt: firebase.firestore.FieldValue.delete(),
+					userNote: firebase.firestore.FieldValue.delete()
+				};
+
+				// Update cache
+				activitiesCache[key] = resetData;
+
+				// Update marker icon to red
+				const marker = markersMap[key];
+				if (marker) {
+					marker.setIcon(redIcon);
+				}
+
+				// Update Firestore
+				if (db) {
+					const promise = db.collection('activities').doc(key).set(resetData, { merge: true });
+					promises.push(promise);
+				}
+
+				// Update localStorage
+				localStorage.setItem(key, JSON.stringify(resetData));
+
+				resetCount++;
+			}
+
+			// Wait for all Firestore updates
+			if (db && promises.length > 0) {
+				Promise.all(promises).then(() => {
+					console.log(`Daily reset completed: ${resetCount} activities reset.`);
+					alert(`✅ Reset Diário Concluído!\n\n${resetCount} atividades foram resetadas para o novo dia.`);
+					updateStats();
+					location.reload(); // Reload for clean state
+				}).catch(err => {
+					console.error('Error during daily reset:', err);
+					alert(`⚠️ Erro ao salvar reset na nuvem. Os dados locais foram resetados.\n\nErro: ${err.message}`);
+					updateStats();
+				});
+			} else {
+				console.log(`Daily reset completed (local only): ${resetCount} activities reset.`);
+				alert(`✅ Reset Diário Concluído (Apenas Local)!\n\n${resetCount} atividades foram resetadas.`);
+				updateStats();
+			}
+		}
+
+		// Initialize timer (start when map loads)
+		function initDailyResetTimer() {
+			const timer = document.getElementById('countdownTimer');
+			if (timer) {
+				timer.style.display = 'block';
+				updateTimerDisplay();
+
+				// Update every second
+				setInterval(updateTimerDisplay, 1000);
+			}
+		}
+
+		// Start timer when map is visible
+		const originalInitMap = initMap;
+		if (typeof originalInitMap === 'function') {
+			// Wrap existing initMap to start timer after map loads
+			window.addEventListener('load', () => {
+				setTimeout(() => {
+					initDailyResetTimer();
+				}, 1000);
+			});
+		}
+
+		// ===== HISTORICAL CHART DASHBOARD =====
+
+		let activityChartInstance = null;
+
+		function openChartModal() {
+			const modal = document.getElementById('chartModal');
+			const loading = document.getElementById('chartLoadingMsg');
+			const error = document.getElementById('chartErrorMsg');
+			const container = document.getElementById('chartContainer');
+
+			// Show modal and loading message
+			modal.style.display = 'flex';
+			loading.style.display = 'block';
+			error.style.display = 'none';
+			container.style.display = 'none';
+
+			// Fetch and render data
+			fetchHistoricalData()
+				.then(data => {
+					loading.style.display = 'none';
+					if (data.length === 0) {
+						error.querySelector('p').textContent = '📭 Nenhum dado histórico disponível ainda.\n\nOs backups serão criados automaticamente após cada reset diário.';
+						error.style.display = 'block';
+					} else {
+						container.style.display = 'block';
+						renderActivityChart(data);
+					}
+				})
+				.catch(err => {
+					console.error('Error fetching historical data:', err);
+					loading.style.display = 'none';
+					error.querySelector('p').textContent = `❌ Erro ao carregar dados históricos:\n${err.message}`;
+					error.style.display = 'block';
+				});
+		}
+
+		function fetchHistoricalData() {
+			return new Promise((resolve, reject) => {
+				if (!db) {
+					reject(new Error('Firestore não inicializado'));
+					return;
+				}
+
+				db.collection('activities_history')
+					.orderBy('date', 'asc')
+					.get()
+					.then(snapshot => {
+						const data = [];
+						snapshot.forEach(doc => {
+							const docData = doc.data();
+							data.push({
+								date: doc.id, // Document ID is the date
+								completed: docData.statistics?.completed || 0,
+								partial: docData.statistics?.partial || 0,
+								pending: docData.statistics?.pending || 0,
+								total: docData.statistics?.total || 0
+							});
+						});
+
+						// Add current day data from activitiesCache
+						const today = new Date().toISOString().split('T')[0];
+						let todayCompleted = 0;
+						let todayPartial = 0;
+						let todayPending = 0;
+						let todayTotal = 0;
+
+						for (const key in activitiesCache) {
+							const activity = activitiesCache[key];
+							todayTotal++;
+							if (activity.status === 'done') todayCompleted++;
+							else if (activity.status === 'partial') todayPartial++;
+							else todayPending++;
+						}
+
+						// Check if today is already in historical data
+						const todayExists = data.some(d => d.date === today);
+						if (!todayExists && todayTotal > 0) {
+							// Add today's data
+							data.push({
+								date: today,
+								completed: todayCompleted,
+								partial: todayPartial,
+								pending: todayPending,
+								total: todayTotal
+							});
+						}
+
+						resolve(data);
+					})
+					.catch(err => {
+						reject(err);
+					});
+			});
+		}
+
+		function renderActivityChart(data) {
+			const canvas = document.getElementById('activityChart');
+			const ctx = canvas.getContext('2d');
+
+			// Destroy previous chart instance if exists
+			if (activityChartInstance) {
+				activityChartInstance.destroy();
+			}
+
+			// Prepare chart data
+			const labels = data.map(d => {
+				// Format date nicely (DD/MM)
+				const parts = d.date.split('-');
+				return `${parts[2]}/${parts[1]}`;
+			});
+
+			const completedData = data.map(d => d.completed);
+			const partialData = data.map(d => d.partial);
+			const pendingData = data.map(d => d.pending);
+
+			// Create chart
+			activityChartInstance = new Chart(ctx, {
+				type: 'line',
+				data: {
+					labels: labels,
+					datasets: [
+						{
+							label: '✅ Concluídos',
+							data: completedData,
+							borderColor: '#4CAF50',
+							backgroundColor: 'rgba(76, 175, 80, 0.1)',
+							tension: 0.4,
+							fill: true
+						},
+						{
+							label: '🟠 Parciais',
+							data: partialData,
+							borderColor: '#ff9800',
+							backgroundColor: 'rgba(255, 152, 0, 0.1)',
+							tension: 0.4,
+							fill: true
+						},
+						{
+							label: '⏳ Pendentes',
+							data: pendingData,
+							borderColor: '#f44336',
+							backgroundColor: 'rgba(244, 67, 54, 0.1)',
+							tension: 0.4,
+							fill: true
+						}
+					]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					plugins: {
+						title: {
+							display: true,
+							text: 'Evolução das Atividades por Dia',
+							font: {
+								size: 16
+							}
+						},
+						legend: {
+							display: true,
+							position: 'top'
+						},
+						tooltip: {
+							mode: 'index',
+							intersect: false,
+							callbacks: {
+								label: function (context) {
+									let label = context.dataset.label || '';
+									if (label) {
+										label += ': ';
+									}
+									label += context.parsed.y + ' atividades';
+									return label;
+								}
+							}
+						}
+					},
+					scales: {
+						y: {
+							beginAtZero: true,
+							ticks: {
+								stepSize: 10
+							},
+							title: {
+								display: true,
+								text: 'Quantidade de Atividades'
+							}
+						},
+						x: {
+							title: {
+								display: true,
+								text: 'Data (Dia/Mês)'
+							}
+						}
+					}
+				}
+			});
+		}
+
+		function closeChartModal() {
+			const modal = document.getElementById('chartModal');
+			modal.style.display = 'none';
+
+			// Cleanup chart
+			if (activityChartInstance) {
+				activityChartInstance.destroy();
+				activityChartInstance = null;
+			}
+		}
+
+		// Wire up chart button click
+		document.getElementById('btnChart').addEventListener('click', openChartModal);
+
+	</script>
+</body>
+
+</html>
