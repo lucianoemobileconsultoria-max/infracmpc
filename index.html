@@ -1724,7 +1724,6 @@
 
 				// Update localStorage
 				localStorage.setItem(key, JSON.stringify(resetData));
-
 				resetCount++;
 			}
 
@@ -1733,17 +1732,16 @@
 				Promise.all(promises).then(() => {
 					console.log(`Daily reset completed: ${resetCount} activities reset.`);
 					alert(`✅ Reset Diário Concluído!\n\n${resetCount} atividades foram resetadas para o novo dia.`);
-					updateStats();
 					location.reload(); // Reload for clean state
 				}).catch(err => {
 					console.error('Error during daily reset:', err);
 					alert(`⚠️ Erro ao salvar reset na nuvem. Os dados locais foram resetados.\n\nErro: ${err.message}`);
-					updateStats();
+					location.reload(); // Reload anyway
 				});
 			} else {
 				console.log(`Daily reset completed (local only): ${resetCount} activities reset.`);
 				alert(`✅ Reset Diário Concluído (Apenas Local)!\n\n${resetCount} atividades foram resetadas.`);
-				updateStats();
+				location.reload(); // Reload for clean state
 			}
 		}
 
