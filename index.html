@@ -296,6 +296,14 @@
 			style="cursor: pointer; padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 4px; margin-left: 5px;">Sair</button>
 	</div>
 
+	<!-- ONLINE/OFFLINE STATUS INDICATOR -->
+	<div id="connectionStatus"
+		style="position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; padding: 8px 12px; border-radius: 4px; box-shadow: 0 0 5px rgba(0,0,0,0.2); font-size: 12px; font-weight: bold;">
+		<span id="statusIcon">🟢</span>
+		<span id="statusText">Online</span>
+		<span id="pendingCount" style="display: none; margin-left: 5px; color: #FF9800;"></span>
+	</div>
+
 	<!-- USERS MANAGEMENT MODAL -->
 	<div id="usersModal"
 		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
@@ -326,18 +334,43 @@
 	<div id="activitiesModal"
 		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
 		<div
-			style="background: white; padding: 2rem; border-radius: 8px; width: 800px; max-width: 95%; max-height: 90vh; overflow-y: auto;">
-			<h3>📋 Gerenciar Atividades por Grupo</h3>
-			<p><small>Selecione um grupo/empresa e marque as atividades disponíveis para ele.</small></p>
+			style="background: white; padding: 2rem; border-radius: 8px; width: 900px; max-width: 95%; max-height: 90vh; overflow-y: auto;">
+			<h3>📋 Gerenciar Atividades</h3>
+			<p><small>Crie atividades e depois associe-as aos grupos/empresas.</small></p>
 			<hr>
 
+			<!-- SECTION 1: CRUD de Atividades -->
+			<div style="background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+				<h4 style="margin-top: 0; color: #333;">➕ Criar Nova Atividade</h4>
+				<div style="display: flex; gap: 10px; margin-bottom: 15px;">
+					<input type="text" id="newActivityNameInput" placeholder="Ex: ABASTECIMENTO COPOS"
+						style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+					<button onclick="createNewActivity()"
+						style="background: #4CAF50; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+						➕ Criar
+					</button>
+				</div>
+
+				<h4 style="color: #333; margin-bottom: 10px;">📋 Atividades Cadastradas:</h4>
+				<div id="activitiesListCRUD"
+					style="max-height: 200px; overflow-y: auto; background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+					<!-- Populated dynamically -->
+				</div>
+			</div>
+
+			<hr style="margin: 25px 0;">
+
+			<!-- SECTION 2: Associação aos Grupos -->
+			<h4 style="color: #333;">🏢 Associar Atividades aos Grupos</h4>
+			<p><small>Selecione um grupo e marque as atividades disponíveis para ele.</small></p>
+
 			<!-- Two-column layout -->
-			<div style="display: flex; gap: 15px; min-height: 400px;">
+			<div style="display: flex; gap: 15px; min-height: 350px;">
 
 				<!-- LEFT COLUMN: Groups -->
 				<div style="flex: 1; border-right: 2px solid #ddd; padding-right: 15px;">
 					<h4 style="margin-top: 0;">🏢 Grupos/Empresas:</h4>
-					<div id="groupsListForSelection" style="max-height: 400px; overflow-y: auto;">
+					<div id="groupsListForSelection" style="max-height: 350px; overflow-y: auto;">
 						<!-- Populated dynamically -->
 					</div>
 				</div>
@@ -346,13 +379,13 @@
 				<div style="flex: 1; padding-left: 15px;">
 					<h4 style="margin-top: 0;">📋 Atividades:</h4>
 					<div id="activitiesListForSelection"
-						style="max-height: 400px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 4px;">
+						style="max-height: 350px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 4px;">
 						<p style="text-align: center; color: #999;">Selecione um grupo à esquerda</p>
 					</div>
 					<div style="margin-top: 10px; text-align: right;">
 						<button id="saveGroupActivitiesBtn" onclick="saveGroupActivities()" disabled
 							style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
-							💾 Salvar
+							💾 Salvar Associação
 						</button>
 					</div>
 				</div>
@@ -448,6 +481,188 @@
 		let activitiesCache = {};
 		let activityTypesCache = []; // Cache for standard activity types
 		let allPlacemarksData = []; // Store parsed KML data for export
+
+		// ===== OFFLINE SYNC SYSTEM =====
+		let isOnline = navigator.onLine;
+		let syncQueue = []; // Queue for offline operations
+		const SYNC_QUEUE_KEY = 'offlineSyncQueue';
+
+		// Load sync queue from localStorage
+		function loadSyncQueue() {
+			try {
+				const saved = localStorage.getItem(SYNC_QUEUE_KEY);
+				if (saved) {
+					syncQueue = JSON.parse(saved);
+					updateConnectionStatus();
+				}
+			} catch (e) {
+				console.error('Error loading sync queue:', e);
+				syncQueue = [];
+			}
+		}
+
+		// Save sync queue to localStorage
+		function saveSyncQueue() {
+			try {
+				localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(syncQueue));
+				updateConnectionStatus();
+			} catch (e) {
+				console.error('Error saving sync queue:', e);
+			}
+		}
+
+		// Add operation to sync queue
+		function addToSyncQueue(operation) {
+			operation.timestamp = Date.now();
+			operation.id = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+			syncQueue.push(operation);
+			saveSyncQueue();
+			console.log('📥 Added to sync queue:', operation.type);
+		}
+
+		// Update connection status UI
+		function updateConnectionStatus() {
+			const statusIcon = document.getElementById('statusIcon');
+			const statusText = document.getElementById('statusText');
+			const pendingCount = document.getElementById('pendingCount');
+
+			if (!statusIcon || !statusText) return;
+
+			if (isOnline) {
+				statusIcon.textContent = '🟢';
+				statusText.textContent = 'Online';
+				statusIcon.parentElement.style.background = 'white';
+			} else {
+				statusIcon.textContent = '🔴';
+				statusText.textContent = 'Offline';
+				statusIcon.parentElement.style.background = '#fff3cd';
+			}
+
+			// Show pending operations count
+			if (syncQueue.length > 0) {
+				pendingCount.textContent = `(${syncQueue.length} pendente${syncQueue.length > 1 ? 's' : ''})`;
+				pendingCount.style.display = 'inline';
+			} else {
+				pendingCount.style.display = 'none';
+			}
+		}
+
+		// Process sync queue
+		async function processSyncQueue() {
+			if (!isOnline || !db || syncQueue.length === 0) {
+				return;
+			}
+
+			console.log(`🔄 Processing ${syncQueue.length} queued operations...`);
+			const failedOperations = [];
+
+			for (const operation of syncQueue) {
+				try {
+					await processQueuedOperation(operation);
+					console.log(`✅ Synced: ${operation.type}`);
+				} catch (error) {
+					console.error(`❌ Failed to sync: ${operation.type}`, error);
+					failedOperations.push(operation);
+				}
+			}
+
+			// Keep only failed operations in queue
+			syncQueue = failedOperations;
+			saveSyncQueue();
+
+			if (failedOperations.length === 0) {
+				console.log('✅ All operations synced successfully!');
+				alert('✅ Todas as alterações offline foram sincronizadas!');
+			} else {
+				console.warn(`⚠️ ${failedOperations.length} operations failed to sync`);
+			}
+		}
+
+		// Process individual queued operation
+		async function processQueuedOperation(operation) {
+			switch (operation.type) {
+				case 'saveActivity':
+					return db.collection('activities').doc(operation.key).set(operation.data, { merge: true });
+
+				case 'completeActivity':
+					return db.collection('activities').doc(operation.key).set(operation.data, { merge: true });
+
+				case 'addActivityType':
+					return db.collection('activity_types').add(operation.data);
+
+				case 'updateActivityType':
+					return db.collection('activity_types').doc(operation.id).update(operation.data);
+
+				case 'deleteActivityType':
+					return db.collection('activity_types').doc(operation.id).delete();
+
+				default:
+					console.warn('Unknown operation type:', operation.type);
+			}
+		}
+
+		// Listen for online/offline events
+		window.addEventListener('online', () => {
+			console.log('🟢 Connection restored!');
+			isOnline = true;
+			updateConnectionStatus();
+
+			// Remove offline banner if it exists
+			if (window.offlineMessageControl && map) {
+				map.removeControl(window.offlineMessageControl);
+				window.offlineMessageControl = null;
+
+				// Show temporary "back online" message
+				const onlineControl = L.control({ position: 'bottomleft' });
+				onlineControl.onAdd = function () {
+					const div = L.DomUtil.create('div', 'online-message');
+					div.innerHTML = `<div style="background: rgba(76,175,80,0.95); padding: 10px 15px; border-radius: 6px; font-size: 13px; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border: 2px solid #4CAF50; animation: fadeIn 0.3s;">
+					<strong>🟢 CONEXÃO RESTAURADA!</strong><br>
+					<small>Sincronizando dados...</small>
+				</div>`;
+					return div;
+				};
+				onlineControl.addTo(map);
+
+				// Remove after 3 seconds
+				setTimeout(() => {
+					if (map) map.removeControl(onlineControl);
+				}, 3000);
+			}
+
+			// Auto-sync after a short delay
+			setTimeout(() => {
+				processSyncQueue();
+			}, 1000);
+		});
+
+		window.addEventListener('offline', () => {
+			console.log('🔴 Connection lost - switching to offline mode');
+			isOnline = false;
+			updateConnectionStatus();
+
+			// Add offline banner dynamically if map exists and banner doesn't exist
+			if (map && !window.offlineMessageControl) {
+				const offlineControl = L.control({ position: 'bottomleft' });
+				offlineControl.onAdd = function () {
+					const div = L.DomUtil.create('div', 'offline-message');
+					div.innerHTML = `<div style="background: rgba(255,193,7,0.95); padding: 10px 15px; border-radius: 6px; font-size: 13px; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border: 2px solid #ff9800; animation: fadeIn 0.3s;">
+						<strong>📴 MODO OFFLINE</strong><br>
+						<small>✓ Usando tiles em cache<br>✓ Pode navegar e marcar atividades<br>✓ Sincronizará ao voltar online</small>
+					</div>`;
+					return div;
+				};
+				offlineControl.addTo(map);
+				window.offlineMessageControl = offlineControl;
+			}
+
+			// Optional alert (can be removed if you don't want it)
+			// alert('⚠️ Modo Offline Ativado\n\nSuas alterações serão salvas localmente e sincronizadas quando a internet voltar.');
+		});
+
+		// Initialize offline system
+		loadSyncQueue();
+		updateConnectionStatus();
 
 		// --- 0. AUTHENTICATION LOGIC ---
 
@@ -663,8 +878,126 @@
 		// Activities Modal - New approach: Select group first, then activities
 		let selectedGroupName = null;
 
+		// === ACTIVITY CRUD FUNCTIONS ===
+
+		function createNewActivity() {
+			const name = document.getElementById('newActivityNameInput').value.trim();
+			if (!name) {
+				alert('Digite um nome para a atividade!');
+				return;
+			}
+
+			if (db) {
+				db.collection('activity_types').add({
+					name: name,
+					assignedGroups: [], // Start with no groups assigned
+					createdAt: firebase.firestore.FieldValue.serverTimestamp()
+				}).then(() => {
+					document.getElementById('newActivityNameInput').value = '';
+					alert(`✅ Atividade "${name}" criada com sucesso!`);
+					// Activities list will update via snapshot listener
+				}).catch(err => {
+					alert('Erro ao criar atividade: ' + err.message);
+				});
+			} else {
+				// Local mode
+				const newActivity = {
+					id: Date.now().toString(),
+					name: name,
+					assignedGroups: []
+				};
+				activityTypesCache.push(newActivity);
+				localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+				renderActivitiesListCRUD();
+				document.getElementById('newActivityNameInput').value = '';
+				alert(`✅ Atividade "${name}" criada!`);
+			}
+		}
+
+		function renderActivitiesListCRUD() {
+			const container = document.getElementById('activitiesListCRUD');
+
+			if (activityTypesCache.length === 0) {
+				container.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Nenhuma atividade cadastrada.<br><small>Use o campo acima para criar.</small></p>';
+				return;
+			}
+
+			let html = '';
+			activityTypesCache.sort((a, b) => a.name.localeCompare(b.name)).forEach(activity => {
+				const groupCount = activity.assignedGroups ? activity.assignedGroups.length : 0;
+				const groupsText = groupCount > 0 ? `${groupCount} grupo(s)` : 'Sem grupos';
+
+				html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee;">
+				<div style="flex: 1;">
+					<strong>${activity.name}</strong><br>
+					<small style="color: #666;">🏢 ${groupsText}</small>
+				</div>
+				<div>
+					<button onclick="editActivity('${activity.id}')" style="background: #2196F3; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-right: 5px;">✏️</button>
+					<button onclick="deleteActivity('${activity.id}')" style="background: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">🗑️</button>
+				</div>
+			</div>`;
+			});
+
+			container.innerHTML = html;
+		}
+
+		function editActivity(id) {
+			const activity = activityTypesCache.find(a => a.id === id);
+			if (!activity) return;
+
+			const newName = prompt('Editar nome da atividade:', activity.name);
+			if (!newName || newName.trim() === '') return;
+
+			const trimmedName = newName.trim();
+
+			if (db) {
+				db.collection('activity_types').doc(id).update({
+					name: trimmedName
+				}).then(() => {
+					alert(`✅ Atividade atualizada para "${trimmedName}"!`);
+				}).catch(err => {
+					alert('Erro ao atualizar: ' + err.message);
+				});
+			} else {
+				const index = activityTypesCache.findIndex(a => a.id === id);
+				if (index !== -1) {
+					activityTypesCache[index].name = trimmedName;
+					localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+					renderActivitiesListCRUD();
+					alert(`✅ Atividade atualizada!`);
+				}
+			}
+		}
+
+		function deleteActivity(id) {
+			const activity = activityTypesCache.find(a => a.id === id);
+			if (!activity) return;
+
+			if (!confirm(`Tem certeza que deseja excluir "${activity.name}" ?\n\nIsso removerá a atividade de todos os grupos.`)) {
+				return;
+			}
+
+			if (db) {
+				db.collection('activity_types').doc(id).delete().then(() => {
+					alert('✅ Atividade excluída!');
+				}).catch(err => {
+					alert('Erro ao excluir: ' + err.message);
+				});
+			} else {
+				const index = activityTypesCache.findIndex(a => a.id === id);
+				if (index !== -1) {
+					activityTypesCache.splice(index, 1);
+					localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+					renderActivitiesListCRUD();
+					alert('✅ Atividade excluída!');
+				}
+			}
+		}
+
 		btnActivities.addEventListener('click', () => {
 			document.getElementById('activitiesModal').style.display = 'flex';
+			renderActivitiesListCRUD(); // Render CRUD list
 			populateGroupsListForSelection();
 		});
 
@@ -679,8 +1012,8 @@
 			const groupNames = Object.keys(window.overlayMaps).sort();
 
 			groupNames.forEach(groupName => {
-				html += `<div onclick="selectGroup('${groupName}')" id="group_${groupName.replace(/\s+/g, '_')}" 
-				style="padding: 12px; margin-bottom: 5px; cursor: pointer; border-radius: 4px; border: 2px solid #ddd; background: white;">
+				html += `<div onclick="selectGroup('${groupName}')" id="group_${groupName.replace(/\s+/g, '_')}"
+			style="padding: 12px; margin-bottom: 5px; cursor: pointer; border-radius: 4px; border: 2px solid #ddd; background: white;">
 				<strong>${groupName}</strong>
 			</div>`;
 			});
@@ -724,8 +1057,8 @@
 				const isAssigned = activity.assignedGroups && activity.assignedGroups.includes(groupName);
 				html += `<label style="display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;">
 				<input type="checkbox" value="${activity.id}" ${isAssigned ? 'checked' : ''} style="margin-right: 8px;">
-				${activity.name}
-			</label>`;
+					${activity.name}
+				</label>`;
 			});
 
 			container.innerHTML = html;
@@ -770,14 +1103,14 @@
 
 				Promise.all(promises)
 					.then(() => {
-						alert(`✅ Atividades salvas para ${selectedGroupName}!`);
+						alert(`✅ Atividades salvas para ${selectedGroupName} !`);
 					})
 					.catch(err => {
 						alert('Erro ao salvar: ' + err.message);
 					});
 			} else {
 				localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
-				alert(`✅ Atividades salvas para ${selectedGroupName}!`);
+				alert(`✅ Atividades salvas para ${selectedGroupName} !`);
 			}
 		}
 		function saveConfig() {
@@ -826,7 +1159,7 @@
 		let markersMap = {}; // Key: lat_lng -> Marker Object
 
 		function updateMarkerIcon(lat, lng, status) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
 			const marker = markersMap[key];
 			if (marker) {
 				if (marker) {
@@ -1071,14 +1404,14 @@
 
 				// Show activity name and groups
 				const groupsText = act.assignedGroups && act.assignedGroups.length > 0
-					? `<small style="color: #666;">🏢 ${act.assignedGroups.join(', ')}</small>`
-					: `<small style="color: #999;">Sem grupos</small>`;
+					? `< small style = "color: #666;" >🏢 ${act.assignedGroups.join(', ')}</small > `
+					: `< small style = "color: #999;" > Sem grupos</small > `;
 
 				div.innerHTML = `
-			<div style="flex: 1; cursor: pointer;" onclick="editActivityType('${act.id}')">
+			< div style = "flex: 1; cursor: pointer;" onclick = "editActivityType('${act.id}')" >
 				<div style="font-weight: bold;">${act.name}</div>
 				<div>${groupsText}</div>
-			</div>
+			</div >
 			<button onclick="deleteActivityType('${act.id}')" style="background:none; border:none; color:red; cursor:pointer; padding: 5px;">🗑️</button>
 		`;
 
@@ -1131,7 +1464,7 @@
 				}
 
 				// CSV Row
-				csvContent += `${name};${lat};${lng};${status};${activity};${user};${date};${note}\n`;
+				csvContent += `${name};${lat};${lng};${status};${activity};${user};${date};${note} \n`;
 			});
 
 			const encodedUri = encodeURI(csvContent);
@@ -1148,7 +1481,7 @@
 
 		// Unified helper to get Activity Data (Object)
 		function getActivityData(lat, lng) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
 
 			// 1. Try Memory Cache
 			if (activitiesCache[key]) {
@@ -1185,7 +1518,7 @@
 		}
 
 		function saveActivity(lat, lng) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
 
 			// Get manual text
 			const text = document.getElementById('activityInput').value;
@@ -1199,20 +1532,10 @@
 				selectedActivities: selectedActivities,
 				lat: lat,
 				lng: lng,
-				updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+				updatedAt: isOnline && db ? firebase.firestore.FieldValue.serverTimestamp() : new Date()
 			};
 
-			// Update Cache & Stats Immediately (for optimistic UI / Local mode)
-			// We store the full object in cache now
-			activitiesCache[key] = payload;
-			updateMarkerIcon(lat, lng, 'pending'); // Saving resets to pending usually, unless we handled status. The payload doesn't have status 'done' unless we preserved it?
-			// Actually, if we are editing text, we are likely treating it as "pending" or preserving existing status?
-			// The logic in saveActivity doesn't read existing status. It just overwrites. 
-			// Wait, the payload definition didn't include 'status'. 
-			// If it was 'done', this save will overwrite it and make it 'undefined' (pending).
-			// We should probably preserve status if it exists.
-
-			// Let's read existing first
+			// Read existing data to preserve status
 			const existing = activitiesCache[key] || {};
 			if (existing.status === 'done' || existing.status === 'partial') {
 				payload.status = existing.status;
@@ -1222,25 +1545,38 @@
 				payload.completedItems = existing.completedItems;
 			}
 
+			// Update cache immediately (optimistic update)
 			activitiesCache[key] = payload;
 			updateMarkerIcon(lat, lng, payload.status);
 
-			// Save to LocalStorage (Legacy/Fallback)
+			// Save to LocalStorage (always, for offline support)
 			localStorage.setItem(key, JSON.stringify(payload));
 
 			if (typeof updateStats === "function") updateStats();
 
-			if (db) {
+			// Try to save to cloud
+			if (db && isOnline) {
 				db.collection("activities").doc(key).set(payload, { merge: true }).then(() => {
-					// alert("Salvo na nuvem! ☁️✅"); // Optional: Remove alert for smoother UX? Keeping for confirmation.
 					map.closePopup();
 				}).catch(err => {
 					console.error(err);
-					alert("Salvo apenas localmente (Erro na nuvem). ⚠️");
+					// Add to offline queue
+					addToSyncQueue({
+						type: 'saveActivity',
+						key: key,
+						data: payload
+					});
+					alert("⚠️ Salvo localmente. Será sincronizado quando a internet voltar.");
 					map.closePopup();
 				});
 			} else {
-				// alert("Salvo localmente! 💾");
+				// Offline mode - add to queue
+				addToSyncQueue({
+					type: 'saveActivity',
+					key: key,
+					data: payload
+				});
+				alert("💾 Salvo offline! Será sincronizado automaticamente.");
 				map.closePopup();
 			}
 		}
@@ -1248,7 +1584,7 @@
 		function concludeActivity(lat, lng, note) {
 			if (!currentUser) return alert("Você precisa estar logado!");
 
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
 			const userNote = note || "";
 
 			// Collect checked items
@@ -1273,7 +1609,7 @@
 					debugMsg = " (Nenhum item feito)";
 				} else if (completedItems.length < totalAssigned) {
 					status = 'partial';
-					debugMsg = ` (Parcial: ${completedItems.length}/${totalAssigned})`;
+					debugMsg = ` (Parcial: ${completedItems.length} / ${totalAssigned})`;
 				} else {
 					status = 'done';
 					debugMsg = " (Todos feitos)";
@@ -1282,30 +1618,49 @@
 				debugMsg = " (Sem lista definida, assumindo Concluído)";
 			}
 
-			if (db) {
-				db.collection("activities").doc(key).set({
-					status: status,
-					completedBy: currentUser.email,
-					completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-					userNote: userNote,
-					completedItems: completedItems
-				}, { merge: true }).then(() => {
-					// Update local cache immediately for UI responsiveness
-					const payload = activitiesCache[key] || {};
-					payload.status = status;
-					payload.completedBy = currentUser.email;
-					payload.completedItems = completedItems;
-					payload.userNote = userNote;
-					activitiesCache[key] = payload;
-					updateMarkerIcon(lat, lng, status);
+			const payload = {
+				status: status,
+				completedBy: currentUser.email,
+				completedAt: isOnline && db ? firebase.firestore.FieldValue.serverTimestamp() : new Date(),
+				userNote: userNote,
+				completedItems: completedItems
+			};
 
-					const msg = status === 'partial' ? "Salvo como Parcial! 🟠" : (status === 'done' ? "Concluído! 🎉" : "Salvo como Pendente! ⚠️");
+			// Update local cache immediately
+			const cachedData = activitiesCache[key] || {};
+			Object.assign(cachedData, payload);
+			activitiesCache[key] = cachedData;
+			updateMarkerIcon(lat, lng, status);
+
+			// Save to localStorage
+			localStorage.setItem(key, JSON.stringify(cachedData));
+
+			const msg = status === 'partial' ? "Salvo como Parcial! 🟠" : (status === 'done' ? "Concluído! 🎉" : "Salvo como Pendente! ⚠️");
+
+			if (db && isOnline) {
+				db.collection("activities").doc(key).set(payload, { merge: true }).then(() => {
 					alert(msg);
 					map.closePopup();
 				}).catch(err => {
 					console.error(err);
-					alert("Erro ao salvar: " + err.message);
+					// Add to offline queue
+					addToSyncQueue({
+						type: 'completeActivity',
+						key: key,
+						data: payload
+					});
+					alert(msg + "\n⚠️ Será sincronizado quando a internet voltar.");
+					map.closePopup();
 				});
+			} else {
+				// Offline mode
+				addToSyncQueue({
+					type: 'completeActivity',
+					key: key,
+					data: payload
+				});
+				alert(msg + "\n💾 Salvo offline!");
+				map.closePopup();
 			}
 		}
 
@@ -1352,11 +1707,99 @@
 			if (map) map.remove();
 			map = L.map('map').setView([-30.134, -51.317], 16);
 
-			L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+			// ALWAYS load Google Satellite (browser will cache tiles automatically)
+			map.getContainer().style.backgroundColor = '#e0e0e0'; // Gray fallback
+
+			const googleSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
 				maxZoom: 20,
 				subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-				attribution: 'Map data &copy; Google'
-			}).addTo(map);
+				attribution: 'Map data &copy; Google',
+				errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' // Transparent tile for errors
+			});
+			googleSatellite.addTo(map);
+
+			// Show offline message if offline
+			if (!isOnline) {
+				const offlineControl = L.control({ position: 'bottomleft' });
+				offlineControl.onAdd = function () {
+					const div = L.DomUtil.create('div', 'offline-message');
+					div.innerHTML = `<div style="background: rgba(255,193,7,0.95); padding: 10px 15px; border-radius: 6px; font-size: 13px; box-shadow: 0 3px 6px rgba(0,0,0,0.3); border: 2px solid #ff9800;">
+						<strong>📴 MODO OFFLINE</strong><br>
+						<small>✓ Usando tiles em cache<br>✓ Pode navegar e marcar atividades<br>✓ Sincronizará ao voltar online</small>
+					</div>`;
+					return div;
+				};
+				offlineControl.addTo(map);
+				// Save reference globally so we can remove it later
+				window.offlineMessageControl = offlineControl;
+			}
+
+			// ADD GEOLOCATION BUTTON (works offline!)
+			const locateControl = L.control({ position: 'topleft' });
+			locateControl.onAdd = function () {
+				const btn = L.DomUtil.create('button', 'locate-btn');
+				btn.innerHTML = '📍';
+				btn.title = 'Minha Localização';
+				btn.style.cssText = 'background: white; border: 2px solid #ccc; border-radius: 4px; width: 34px; height: 34px; cursor: pointer; font-size: 18px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);';
+
+				btn.onclick = function () {
+					if (!navigator.geolocation) {
+						alert('⚠️ Geolocalização não disponível no seu navegador.');
+						return;
+					}
+
+					btn.innerHTML = '⏳';
+					navigator.geolocation.getCurrentPosition(
+						function (position) {
+							const lat = position.coords.latitude;
+							const lng = position.coords.longitude;
+
+							// Add/update user position marker
+							if (window.userMarker) {
+								window.userMarker.setLatLng([lat, lng]);
+							} else {
+								window.userMarker = L.circleMarker([lat, lng], {
+									color: '#4285F4',
+									fillColor: '#4285F4',
+									fillOpacity: 0.8,
+									radius: 8
+								}).addTo(map);
+								window.userMarker.bindPopup('<strong>📍 Você está aqui!</strong>');
+							}
+
+							// Zoom to user location
+							map.setView([lat, lng], 17);
+							window.userMarker.openPopup();
+							btn.innerHTML = '📍';
+
+							// Show success message
+							setTimeout(() => {
+								const msg = document.createElement('div');
+								msg.style.cssText = 'position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 10px 20px; border-radius: 4px; z-index: 10000; box-shadow: 0 2px 4px rgba(0,0,0,0.3);';
+								msg.textContent = '✓ Localização encontrada!';
+								document.body.appendChild(msg);
+								setTimeout(() => msg.remove(), 2000);
+							}, 100);
+						},
+						function (error) {
+							btn.innerHTML = '📍';
+							let errorMsg = 'Erro ao obter localização.';
+							if (error.code === 1) errorMsg = '⚠️ Permissão de localização negada.';
+							else if (error.code === 2) errorMsg = '⚠️ Localização não disponível.';
+							else if (error.code === 3) errorMsg = '⚠️ Timeout ao obter localização.';
+							alert(errorMsg);
+						},
+						{
+							enableHighAccuracy: true,
+							timeout: 10000,
+							maximumAge: 0
+						}
+					);
+				};
+
+				return btn;
+			};
+			locateControl.addTo(map);
 
 			const parser = new DOMParser();
 			const xmlDoc = parser.parseFromString(kmlText, "text/xml");
@@ -1515,13 +1958,13 @@
 									if (activityText) {
 										displayHtml += `<p style="margin:5px 0;"><em>${activityText}</em></p>`;
 									}
-
+	
 									const date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
-
+	
 									const statusTitle = isDone ? '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>' : '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
 									const bgColor = isDone ? '#e8f5e9' : '#fff3e0';
 									const borderColor = isDone ? '#4CAF50' : '#ff9800';
-
+	
 									content += `
 										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
 											${statusTitle}<br>
@@ -1549,11 +1992,11 @@
 									if (activityText) {
 										displayHtml += `<div style="margin:5px 0; padding:5px; background:#fff; border:1px dashed #ccc;"><em>${activityText}</em></div>`;
 									}
-
+	
 									const isPartialMsg = isPartial ? '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>' : '<strong>⚠️ Atividade Pendente:</strong>';
 									const bgColor = isPartial ? '#fff3e0' : '#fff3e0';
 									const borderColor = isPartial ? '#ff9800' : '#ff9800';
-
+	
 									content += `
 										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border-left: 4px solid ${borderColor};">
 											${isPartialMsg}<br>
@@ -1682,15 +2125,15 @@
 			buttonContainer.style.marginBottom = "5px";
 
 			buttonContainer.innerHTML = `
-                <button onclick="toggleAllLayers(true)" style="font-size: 12px; cursor: pointer;">Min</button>
+			< button onclick = "toggleAllLayers(true)" style = "font-size: 12px; cursor: pointer;" > Min</button >
                 <button onclick="toggleAllLayers(false)" style="font-size: 12px; cursor: pointer;">Nenhum</button>
                 <button onclick="toggleAllLayers(true)" style="font-size: 12px; cursor: pointer; margin-left: 5px;">Todos</button>
-            `;
+		`;
 			// Simplified: Just Todos / Nenhum is better
 			buttonContainer.innerHTML = `
-                <a href="#" onclick="toggleAllLayers(true); return false;" style="font-size: 12px; margin-right: 10px;">Marcar Todos</a>
-                <a href="#" onclick="toggleAllLayers(false); return false;" style="font-size: 12px; color: red;">Desmarcar Todos</a>
-            `;
+			<a href="#" onclick="toggleAllLayers(true); return false;" style="font-size: 12px; margin-right: 10px;">Marcar Todos</a>
+				<a href="#" onclick="toggleAllLayers(false); return false;" style="font-size: 12px; color: red;">Desmarcar Todos</a>
+		`;
 
 			container.insertBefore(buttonContainer, container.firstChild);
 
@@ -1724,11 +2167,11 @@
 				div.style.fontFamily = 'sans-serif';
 				div.style.zIndex = '1000';
 				div.innerHTML = `
-                    <h4 style="margin: 0 0 5px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
-                    <div id="statsContent">
-                        <em>Calculando...</em>
-                    </div>
-                `;
+			<h4 style="margin: 0 0 5px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
+				<div id="statsContent">
+					<em>Calculando...</em>
+				</div>
+		`;
 				return div;
 			};
 			statsControl.addTo(map);
@@ -1759,7 +2202,7 @@
 				const percent = total > 0 ? ((completed / total) * 100).toFixed(1) : "0.0";
 
 				const html = `
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+			<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
                         <span>📍 Total (Visível):</span> <strong>${total}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #2e7d32;">
@@ -1773,7 +2216,7 @@
                         <div style="background: #4CAF50; width: ${percent}%; height: 100%; transition: width 0.5s ease-in-out;"></div>
                         <span style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); font-size: 9px; line-height: 12px; color: #333; font-weight: bold;">${percent}%</span>
                     </div>
-                `;
+		`;
 
 				const container = document.getElementById('statsContent');
 				if (container) container.innerHTML = html;
@@ -1806,7 +2249,7 @@
 			if (!display || !timer) return;
 
 			// Format HH:MM:SS
-			const formatted = `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}:${String(time.seconds).padStart(2, '0')}`;
+			const formatted = `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}:${String(time.seconds).padStart(2, '0')} `;
 			display.textContent = formatted;
 
 			// Color coding based on time remaining
@@ -1960,12 +2403,12 @@
 					location.reload(); // Reload for clean state
 				}).catch(err => {
 					console.error('Error during daily reset:', err);
-					alert(`⚠️ Erro ao salvar reset na nuvem. Os dados locais foram resetados.\n\nErro: ${err.message}`);
+					alert(`⚠️ Erro ao salvar reset na nuvem.Os dados locais foram resetados.\n\nErro: ${err.message} `);
 					location.reload(); // Reload anyway
 				});
 			} else {
-				console.log(`Daily reset completed (local only): ${resetCount} activities reset.`);
-				alert(`✅ Reset Diário Concluído (Apenas Local)!\n\n${resetCount} atividades foram resetadas.`);
+				console.log(`Daily reset completed(local only): ${resetCount} activities reset.`);
+				alert(`✅ Reset Diário Concluído(Apenas Local)!\n\n${resetCount} atividades foram resetadas.`);
 				location.reload(); // Reload for clean state
 			}
 		}
@@ -2024,7 +2467,7 @@
 				.catch(err => {
 					console.error('Error fetching historical data:', err);
 					loading.style.display = 'none';
-					error.querySelector('p').textContent = `❌ Erro ao carregar dados históricos:\n${err.message}`;
+					error.querySelector('p').textContent = `❌ Erro ao carregar dados históricos: \n${err.message} `;
 					error.style.display = 'block';
 				});
 		}
@@ -2438,7 +2881,7 @@
 			if (statsContent && statsContent.innerHTML) {
 				html += `<div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #2196F3;">
 				<h4 style="margin: 0 0 10px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
-				${statsContent.innerHTML}
+				<div id="mobileStatsPlaceholder"></div>
 			</div>`;
 			}
 
@@ -2504,6 +2947,14 @@
 		</button>`;
 
 			menuContent.innerHTML = html;
+
+			// Inject stats content after rendering (to avoid HTML escaping)
+			if (statsContent && statsContent.innerHTML) {
+				const placeholder = document.getElementById('mobileStatsPlaceholder');
+				if (placeholder) {
+					placeholder.innerHTML = statsContent.innerHTML;
+				}
+			}
 
 			// Populate layers dynamically (if map exists)
 			if (typeof map !== 'undefined' && map && typeof window.overlayMaps !== 'undefined') {
