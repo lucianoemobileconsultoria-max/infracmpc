@@ -13,6 +13,8 @@
 	<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 	<!-- Chart.js for Historical Dashboard -->
 	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+	<!-- SheetJS for Excel Export -->
+	<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 	<style>
 		body {
 			margin: 0;
@@ -1980,6 +1982,148 @@
 
 		// Wire up chart button click
 		document.getElementById('btnChart').addEventListener('click', openChartModal);
+
+		// ===== EXCEL EXPORT FUNCTIONALITY =====
+
+		function exportCurrentDataToExcel() {
+			if (!allPlacemarksData || allPlacemarksData.length === 0) {
+				alert('⚠️ Nenhum dado disponível para exportar.');
+				return;
+			}
+
+			// Prepare data for export
+			const exportData = [];
+
+			allPlacemarksData.forEach(item => {
+				const activityData = getActivityData(item.lat, item.lng);
+				const row = {
+					'Grupo': item.group,
+					'Nome': item.name,
+					'Latitude': item.lat.toFixed(6),
+					'Longitude': item.lng.toFixed(6),
+					'Status': activityData?.status === 'done' ? 'Concluído' : (activityData?.status === 'partial' ? 'Parcial' : 'Pendente'),
+					'Atividades Selecionadas': activityData?.selectedActivities?.join(', ') || '',
+					'Itens Concluídos': activityData?.completedItems?.join(', ') || '',
+					'Observações': activityData?.text || '',
+					'Concluído Por': activityData?.completedBy || '',
+					'Data de Conclusão': activityData?.completedAt ? new Date(activityData.completedAt.seconds * 1000).toLocaleDateString('pt-BR') : ''
+				};
+				exportData.push(row);
+			});
+
+			// Create workbook
+			const wb = XLSX.utils.book_new();
+			const ws = XLSX.utils.json_to_sheet(exportData);
+
+			// Auto-size columns
+			const maxWidth = 50;
+			const wscols = Object.keys(exportData[0] || {}).map(() => ({ wch: maxWidth }));
+			ws['!cols'] = wscols;
+
+			XLSX.utils.book_append_sheet(wb, ws, 'Dados Atuais');
+
+			// Generate filename with current date
+			const today = new Date().toISOString().split('T')[0];
+			const filename = `Mapa_PG_G2_${today}.xlsx`;
+
+			// Download
+			XLSX.writeFile(wb, filename);
+			alert(`✅ Dados exportados com sucesso!\n\nArquivo: ${filename}`);
+		}
+
+		function exportHistoricalDataToExcel() {
+			if (!db) {
+				alert('⚠️ Firestore não conectado. Não é possível exportar histórico.');
+				return;
+			}
+
+			alert('📦 Buscando dados históricos...');
+
+			db.collection('activities_history')
+				.orderBy('date', 'asc')
+				.get()
+				.then(snapshot => {
+					if (snapshot.empty) {
+						alert('⚠️ Nenhum dado histórico encontrado.');
+						return;
+					}
+
+					const wb = XLSX.utils.book_new();
+
+					// Create summary sheet
+					const summaryData = [];
+					snapshot.forEach(doc => {
+						const data = doc.data();
+						summaryData.push({
+							'Data': doc.id,
+							'Total': data.statistics?.total || 0,
+							'Concluídos': data.statistics?.completed || 0,
+							'Parciais': data.statistics?.partial || 0,
+							'Pendentes': data.statistics?.pending || 0,
+							'% Conclusão': data.statistics?.total > 0 ? ((data.statistics.completed / data.statistics.total) * 100).toFixed(1) + '%' : '0%'
+						});
+					});
+
+					const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+					XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumo');
+
+					// Create detailed sheets for each date
+					snapshot.forEach(doc => {
+						const data = doc.data();
+						const date = doc.id;
+						const activities = [];
+
+						// Convert activities object to array
+						for (const key in data.activities) {
+							const activity = data.activities[key];
+							activities.push({
+								'Key': key,
+								'Status': activity.status === 'done' ? 'Concluído' : (activity.status === 'partial' ? 'Parcial' : 'Pendente'),
+								'Atividades': activity.selectedActivities?.join(', ') || '',
+								'Concluídos': activity.completedItems?.join(', ') || '',
+								'Observações': activity.text || '',
+								'Concluído Por': activity.completedBy || ''
+							});
+						}
+
+						if (activities.length > 0) {
+							const ws = XLSX.utils.json_to_sheet(activities);
+							// Sheet name limited to 31 characters
+							const sheetName = date.substring(0, 31);
+							XLSX.utils.book_append_sheet(wb, ws, sheetName);
+						}
+					});
+
+					// Generate filename
+					const filename = `Historico_Mapa_PG_G2_Completo.xlsx`;
+
+					// Download
+					XLSX.writeFile(wb, filename);
+					alert(`✅ Histórico exportado com sucesso!\n\nArquivo: ${filename}\n\nContém ${snapshot.size} dias de dados.`);
+				})
+				.catch(err => {
+					console.error('Error exporting historical data:', err);
+					alert(`❌ Erro ao exportar histórico:\n${err.message}`);
+				});
+		}
+
+		function showExportOptions() {
+			const choice = confirm(
+				'📥 EXPORTAR PARA EXCEL\n\n' +
+				'Escolha uma opção:\n\n' +
+				'OK = Dados Atuais (hoje)\n' +
+				'CANCELAR = Histórico Completo (todos os dias)'
+			);
+
+			if (choice) {
+				exportCurrentDataToExcel();
+			} else {
+				exportHistoricalDataToExcel();
+			}
+		}
+
+		// Wire up export button
+		document.getElementById('btnExport').addEventListener('click', showExportOptions);
 
 		// ===== MOBILE HAMBURGER MENU LOGIC =====
 
