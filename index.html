@@ -325,20 +325,41 @@
 	<!-- ACTIVITIES MANAGEMENT MODAL -->
 	<div id="activitiesModal"
 		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
-		<div style="background: white; padding: 2rem; border-radius: 8px; width: 500px; max-width: 90%;">
-			<h3>📋 Gerenciar Tipos de Atividade</h3>
-			<p><small>Defina as opções que aparecerão para seleção nos pontos.</small></p>
+		<div
+			style="background: white; padding: 2rem; border-radius: 8px; width: 800px; max-width: 95%; max-height: 90vh; overflow-y: auto;">
+			<h3>📋 Gerenciar Atividades por Grupo</h3>
+			<p><small>Selecione um grupo/empresa e marque as atividades disponíveis para ele.</small></p>
 			<hr>
-			<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-				<input type="text" id="newActivityName" placeholder="Nome da Atividade (ex: Hidrojato)"
-					style="flex: 1; padding: 5px;">
-				<button onclick="addActivityType()"
-					style="background: #4CAF50; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">Adicionar</button>
+
+			<!-- Two-column layout -->
+			<div style="display: flex; gap: 15px; min-height: 400px;">
+
+				<!-- LEFT COLUMN: Groups -->
+				<div style="flex: 1; border-right: 2px solid #ddd; padding-right: 15px;">
+					<h4 style="margin-top: 0;">🏢 Grupos/Empresas:</h4>
+					<div id="groupsListForSelection" style="max-height: 400px; overflow-y: auto;">
+						<!-- Populated dynamically -->
+					</div>
+				</div>
+
+				<!-- RIGHT COLUMN: Activities -->
+				<div style="flex: 1; padding-left: 15px;">
+					<h4 style="margin-top: 0;">📋 Atividades:</h4>
+					<div id="activitiesListForSelection"
+						style="max-height: 400px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 4px;">
+						<p style="text-align: center; color: #999;">Selecione um grupo à esquerda</p>
+					</div>
+					<div style="margin-top: 10px; text-align: right;">
+						<button id="saveGroupActivitiesBtn" onclick="saveGroupActivities()" disabled
+							style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
+							💾 Salvar
+						</button>
+					</div>
+				</div>
+
 			</div>
-			<div id="activityTypesList"
-				style="max-height: 250px; overflow-y: auto; background: #f9f9f9; padding: 10px; border: 1px solid #ddd; margin-bottom: 20px;">
-				Carregando...
-			</div>
+
+			<hr style="margin-top: 20px;">
 			<div style="text-align: right;">
 				<button onclick="document.getElementById('activitiesModal').style.display='none'"
 					style="background: #777; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Fechar</button>
@@ -639,12 +660,126 @@
 			loadUsersList();
 		});
 
-		// Activities Modal
+		// Activities Modal - New approach: Select group first, then activities
+		let selectedGroupName = null;
+
 		btnActivities.addEventListener('click', () => {
 			document.getElementById('activitiesModal').style.display = 'flex';
-			renderActivityTypesList();
+			populateGroupsListForSelection();
 		});
 
+		function populateGroupsListForSelection() {
+			const container = document.getElementById('groupsListForSelection');
+			if (!window.overlayMaps) {
+				container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Carregue o mapa primeiro</p>';
+				return;
+			}
+
+			let html = '';
+			const groupNames = Object.keys(window.overlayMaps).sort();
+
+			groupNames.forEach(groupName => {
+				html += `<div onclick="selectGroup('${groupName}')" id="group_${groupName.replace(/\s+/g, '_')}" 
+				style="padding: 12px; margin-bottom: 5px; cursor: pointer; border-radius: 4px; border: 2px solid #ddd; background: white;">
+				<strong>${groupName}</strong>
+			</div>`;
+			});
+
+			container.innerHTML = html;
+		}
+
+		function selectGroup(groupName) {
+			selectedGroupName = groupName;
+
+			// Highlight selected group
+			document.querySelectorAll('#groupsListForSelection > div').forEach(div => {
+				div.style.background = 'white';
+				div.style.borderColor = '#ddd';
+			});
+
+			const selectedDiv = document.getElementById('group_' + groupName.replace(/\s+/g, '_'));
+			if (selectedDiv) {
+				selectedDiv.style.background = '#e8f5e9';
+				selectedDiv.style.borderColor = '#4CAF50';
+			}
+
+			// Load activities for this group
+			populateActivitiesForGroup(groupName);
+
+			// Enable save button
+			document.getElementById('saveGroupActivitiesBtn').disabled = false;
+		}
+
+		function populateActivitiesForGroup(groupName) {
+			const container = document.getElementById('activitiesListForSelection');
+
+			if (activityTypesCache.length === 0) {
+				container.innerHTML = '<p style="text-align: center; color: #999;">Nenhuma atividade cadastrada ainda.<br><small>Use o firestore para criar atividades</small></p>';
+				return;
+			}
+
+			let html = '<div style="margin-bottom: 10px;"><small style="color: #666;">Marque as atividades disponíveis para <strong>' + groupName + '</strong>:</small></div>';
+
+			activityTypesCache.sort((a, b) => a.name.localeCompare(b.name)).forEach(activity => {
+				const isAssigned = activity.assignedGroups && activity.assignedGroups.includes(groupName);
+				html += `<label style="display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;">
+				<input type="checkbox" value="${activity.id}" ${isAssigned ? 'checked' : ''} style="margin-right: 8px;">
+				${activity.name}
+			</label>`;
+			});
+
+			container.innerHTML = html;
+		}
+
+		function saveGroupActivities() {
+			if (!selectedGroupName) {
+				alert('Selecione um grupo primeiro!');
+				return;
+			}
+
+			// Get checked activities
+			const checkedBoxes = document.querySelectorAll('#activitiesListForSelection input[type="checkbox"]:checked');
+			const selectedActivityIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+			// Update each activity's assignedGroups
+			activityTypesCache.forEach(activity => {
+				if (!activity.assignedGroups) activity.assignedGroups = [];
+
+				// Remove this group from activity if not selected
+				const index = activity.assignedGroups.indexOf(selectedGroupName);
+				if (selectedActivityIds.includes(activity.id)) {
+					// Add group if not already there
+					if (index === -1) {
+						activity.assignedGroups.push(selectedGroupName);
+					}
+				} else {
+					// Remove group if it's there
+					if (index !== -1) {
+						activity.assignedGroups.splice(index, 1);
+					}
+				}
+			});
+
+			// Save to firestore or local
+			if (db) {
+				const promises = activityTypesCache.map(activity => {
+					return db.collection('activity_types').doc(activity.id).update({
+						assignedGroups: activity.assignedGroups
+					});
+				});
+
+				Promise.all(promises)
+					.then(() => {
+						alert(`✅ Atividades salvas para ${selectedGroupName}!`);
+					})
+					.catch(err => {
+						alert('Erro ao salvar: ' + err.message);
+					});
+			} else {
+				localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+				alert(`✅ Atividades salvas para ${selectedGroupName}!`);
+			}
+		}
 		function saveConfig() {
 			const apiKey = document.getElementById('apiKeyInput').value.trim();
 			const projectId = document.getElementById('projectIdInput').value.trim();
@@ -810,26 +945,95 @@
 		}
 
 		// --- ACTIVITIES TYPES CRUD ---
+		let editingActivityId = null; // Track if we're editing
+
 		function addActivityType() {
 			const name = document.getElementById('newActivityName').value.trim();
 			if (!name) return alert("Digite um nome!");
 
-			if (db) {
-				db.collection("activity_types").add({
-					name: name,
-					createdAt: firebase.firestore.FieldValue.serverTimestamp()
-				}).then(() => {
-					document.getElementById('newActivityName').value = "";
-				}).catch(err => alert("Erro ao salvar: " + err.message));
+			// Get selected groups
+			const groupCheckboxes = document.querySelectorAll('#groupCheckboxes input[type="checkbox"]:checked');
+			const selectedGroups = Array.from(groupCheckboxes).map(cb => cb.value);
+
+			if (selectedGroups.length === 0) {
+				return alert("Selecione pelo menos um grupo/empresa para esta atividade!");
+			}
+
+			if (editingActivityId) {
+				// UPDATE existing activity
+				if (db) {
+					db.collection("activity_types").doc(editingActivityId).update({
+						name: name,
+						assignedGroups: selectedGroups
+					}).then(() => {
+						clearActivityForm();
+						alert("Atividade atualizada!");
+					}).catch(err => alert("Erro ao atualizar: " + err.message));
+				} else {
+					// Update in local cache
+					const index = activityTypesCache.findIndex(a => a.id === editingActivityId);
+					if (index !== -1) {
+						activityTypesCache[index] = {
+							id: editingActivityId,
+							name: name,
+							assignedGroups: selectedGroups
+						};
+						localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+						renderActivityTypesList();
+						clearActivityForm();
+					}
+				}
 			} else {
-				// Local fallback
-				activityTypesCache.push({ id: Date.now().toString(), name: name });
-				localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
-				renderActivityTypesList();
-				document.getElementById('newActivityName').value = "";
+				// ADD new activity
+				if (db) {
+					db.collection("activity_types").add({
+						name: name,
+						assignedGroups: selectedGroups,
+						createdAt: firebase.firestore.FieldValue.serverTimestamp()
+					}).then(() => {
+						clearActivityForm();
+					}).catch(err => alert("Erro ao salvar: " + err.message));
+				} else {
+					// Local fallback
+					activityTypesCache.push({
+						id: Date.now().toString(),
+						name: name,
+						assignedGroups: selectedGroups
+					});
+					localStorage.setItem('localActivityTypes', JSON.stringify(activityTypesCache));
+					renderActivityTypesList();
+					clearActivityForm();
+				}
 			}
 		}
 
+		function clearActivityForm() {
+			document.getElementById('newActivityName').value = "";
+			document.querySelectorAll('#groupCheckboxes input[type="checkbox"]').forEach(cb => cb.checked = false);
+			editingActivityId = null;
+			// Change button text back
+			const btn = document.querySelector('#activitiesModal button[onclick="addActivityType()"]');
+			if (btn) btn.textContent = "Adicionar";
+		}
+
+		function editActivityType(id) {
+			const activity = activityTypesCache.find(a => a.id === id);
+			if (!activity) return;
+
+			// Populate form
+			document.getElementById('newActivityName').value = activity.name;
+
+			// Check the assigned groups
+			document.querySelectorAll('#groupCheckboxes input[type="checkbox"]').forEach(cb => {
+				cb.checked = activity.assignedGroups && activity.assignedGroups.includes(cb.value);
+			});
+
+			editingActivityId = id;
+
+			// Change button text
+			const btn = document.querySelector('#activitiesModal button[onclick="addActivityType()"]');
+			if (btn) btn.textContent = "Atualizar";
+		}
 		function deleteActivityType(id) {
 			if (confirm("Tem certeza que deseja excluir?")) {
 				if (db) {
@@ -864,10 +1068,20 @@
 				div.style.display = "flex";
 				div.style.justifyContent = "space-between";
 				div.style.alignItems = "center";
+
+				// Show activity name and groups
+				const groupsText = act.assignedGroups && act.assignedGroups.length > 0
+					? `<small style="color: #666;">🏢 ${act.assignedGroups.join(', ')}</small>`
+					: `<small style="color: #999;">Sem grupos</small>`;
+
 				div.innerHTML = `
-					<span>${act.name}</span>
-					<button onclick="deleteActivityType('${act.id}')" style="background:none; border:none; color:red; cursor:pointer;">🗑️</button>
-				`;
+			<div style="flex: 1; cursor: pointer;" onclick="editActivityType('${act.id}')">
+				<div style="font-weight: bold;">${act.name}</div>
+				<div>${groupsText}</div>
+			</div>
+			<button onclick="deleteActivityType('${act.id}')" style="background:none; border:none; color:red; cursor:pointer; padding: 5px;">🗑️</button>
+		`;
+
 				listDiv.appendChild(div);
 			});
 		}
@@ -1241,13 +1455,22 @@
 							let checkboxesHtml = "";
 							if (activityTypesCache.length > 0) {
 								checkboxesHtml += `<div style="text-align:left; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:5px; margin-bottom:5px;">`;
-								activityTypesCache.forEach(type => {
-									const isChecked = selectedList.includes(type.name) ? 'checked' : '';
-									checkboxesHtml += `
-										<label style="display:block; margin-bottom:3px; cursor:pointer;">
-											<input type="checkbox" class="activity-checkbox" value="${type.name}" ${isChecked}> ${type.name}
-										</label>`;
+								// FILTER: Only show activities assigned to this group
+								const filteredActivities = activityTypesCache.filter(type => {
+									return type.assignedGroups && type.assignedGroups.includes(groupName);
 								});
+
+								if (filteredActivities.length > 0) {
+									filteredActivities.forEach(type => {
+										const isChecked = selectedList.includes(type.name) ? 'checked' : '';
+										checkboxesHtml += `
+							<label style="display:block; margin-bottom:3px; cursor:pointer;">
+								<input type="checkbox" class="activity-checkbox" value="${type.name}" ${isChecked}> ${type.name}
+							</label>`;
+									});
+								} else {
+									checkboxesHtml += `<p><small><i>Nenhuma atividade configurada para o grupo "${groupName}".</i></small></p>`;
+								}
 								checkboxesHtml += `</div>`;
 							} else {
 								checkboxesHtml = `<p><small><i>Nenhum tipo cadastrado. Use o botão "Tipos de Atividade" no topo.</i></small></p>`;
@@ -1996,17 +2219,39 @@
 
 			allPlacemarksData.forEach(item => {
 				const activityData = getActivityData(item.lat, item.lng);
+
+				// Determine status
+				let status = 'Pendente';
+				if (activityData?.status === 'done') status = 'Concluído';
+				else if (activityData?.status === 'partial') status = 'Parcial';
+
+				// Format date
+				let completedDate = '';
+				if (activityData?.completedAt) {
+					if (activityData.completedAt.seconds) {
+						completedDate = new Date(activityData.completedAt.seconds * 1000).toLocaleString('pt-BR');
+					} else if (activityData.completedAt instanceof Date) {
+						completedDate = activityData.completedAt.toLocaleString('pt-BR');
+					}
+				}
+
 				const row = {
 					'Grupo': item.group,
 					'Nome': item.name,
 					'Latitude': item.lat.toFixed(6),
 					'Longitude': item.lng.toFixed(6),
-					'Status': activityData?.status === 'done' ? 'Concluído' : (activityData?.status === 'partial' ? 'Parcial' : 'Pendente'),
-					'Atividades Selecionadas': activityData?.selectedActivities?.join(', ') || '',
-					'Itens Concluídos': activityData?.completedItems?.join(', ') || '',
-					'Observações': activityData?.text || '',
+					'Status': status,
+					'Atividades Disponíveis (Admin)': activityData?.selectedActivities?.join(', ') || '',
+					'Checkboxes Marcados pelo Usuário': activityData?.completedItems?.join(', ') || '',
+					'Observações Admin': activityData?.text || '',
+					'Observações do Usuário': activityData?.userNote || '',
 					'Concluído Por': activityData?.completedBy || '',
-					'Data de Conclusão': activityData?.completedAt ? new Date(activityData.completedAt.seconds * 1000).toLocaleDateString('pt-BR') : ''
+					'Data/Hora de Conclusão': completedDate,
+					'Total de Itens': activityData?.selectedActivities?.length || 0,
+					'Itens Concluídos': activityData?.completedItems?.length || 0,
+					'Progresso': activityData?.selectedActivities?.length > 0
+						? `${activityData.completedItems?.length || 0}/${activityData.selectedActivities.length}`
+						: '0/0'
 				};
 				exportData.push(row);
 			});
@@ -2076,13 +2321,36 @@
 						// Convert activities object to array
 						for (const key in data.activities) {
 							const activity = data.activities[key];
+
+							// Determine status
+							let status = 'Pendente';
+							if (activity.status === 'done') status = 'Concluído';
+							else if (activity.status === 'partial') status = 'Parcial';
+
+							// Format date
+							let completedDate = '';
+							if (activity.completedAt) {
+								if (activity.completedAt.seconds) {
+									completedDate = new Date(activity.completedAt.seconds * 1000).toLocaleString('pt-BR');
+								} else if (activity.completedAt instanceof Date) {
+									completedDate = activity.completedAt.toLocaleString('pt-BR');
+								}
+							}
+
 							activities.push({
-								'Key': key,
-								'Status': activity.status === 'done' ? 'Concluído' : (activity.status === 'partial' ? 'Parcial' : 'Pendente'),
-								'Atividades': activity.selectedActivities?.join(', ') || '',
-								'Concluídos': activity.completedItems?.join(', ') || '',
-								'Observações': activity.text || '',
-								'Concluído Por': activity.completedBy || ''
+								'Chave': key,
+								'Status': status,
+								'Atividades Disponíveis (Admin)': activity.selectedActivities?.join(', ') || '',
+								'Checkboxes Marcados pelo Usuário': activity.completedItems?.join(', ') || '',
+								'Observações Admin': activity.text || '',
+								'Observações do Usuário': activity.userNote || '',
+								'Concluído Por': activity.completedBy || '',
+								'Data/Hora de Conclusão': completedDate,
+								'Total de Itens': activity.selectedActivities?.length || 0,
+								'Itens Concluídos': activity.completedItems?.length || 0,
+								'Progresso': activity.selectedActivities?.length > 0
+									? `${activity.completedItems?.length || 0}/${activity.selectedActivities.length}`
+									: '0/0'
 							});
 						}
 
