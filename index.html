@@ -292,6 +292,9 @@
 		<button id="btnChart"
 			style="cursor: pointer; padding: 5px 10px; background: #00BCD4; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📊
 			Gráfico</button>
+		<button id="btnUploadKML"
+			style="cursor: pointer; padding: 5px 10px; background: #673AB7; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📂
+			Upload KML</button>
 		<button onclick="performLogout()"
 			style="cursor: pointer; padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 4px; margin-left: 5px;">Sair</button>
 	</div>
@@ -452,6 +455,38 @@
 				e Conectar</button>
 			<button onclick="document.getElementById('configModal').style.display='none'"
 				style="background: #f44336; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-left: 10px;">Cancelar</button>
+		</div>
+	</div>
+
+	<!-- KML UPLOAD MODAL -->
+	<div id="kmlUploadModal"
+		style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+		<div style="background: white; padding: 2rem; border-radius: 8px; width: 500px; max-width: 90%;">
+			<h3>📂 Upload de Arquivo KML</h3>
+			<p><small>Selecione o arquivo .kml para atualizar o mapa do sistema.</small></p>
+			<hr>
+
+			<div style="margin-bottom: 1.5rem;">
+				<label style="display: block; margin-bottom: 0.5rem; font-weight: bold; color: #333;">Arquivo
+					KML:</label>
+				<input type="file" id="kmlFileInput" accept=".kml"
+					style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; cursor: pointer;">
+				<div id="kmlFilePreview"
+					style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: none;">
+					<strong>Arquivo selecionado:</strong> <span id="kmlFileName"></span>
+				</div>
+			</div>
+
+			<div id="kmlUploadStatus" style="margin-bottom: 1rem; padding: 10px; border-radius: 4px; display: none;">
+			</div>
+
+			<div style="display: flex; gap: 10px; justify-content: flex-end;">
+				<button onclick="closeKMLUploadModal()"
+					style="background: #777; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Cancelar</button>
+				<button id="btnConfirmKMLUpload" onclick="handleKMLUpload()" disabled
+					style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">📤
+					Fazer Upload</button>
+			</div>
 		</div>
 	</div>
 
@@ -839,6 +874,7 @@
 					btnExport.style.display = 'inline-block';
 					btnActivities.style.display = 'inline-block';
 					btnChart.style.display = 'inline-block';
+					btnUploadKML.style.display = 'inline-block'; // Show KML upload
 					alert("Modo Admin ativado! ✅");
 				} else {
 					e.target.checked = false;
@@ -847,6 +883,7 @@
 					btnUsers.style.display = 'none';
 					btnExport.style.display = 'none';
 					btnChart.style.display = 'none';
+					btnUploadKML.style.display = 'none';
 					alert("Senha incorreta! ❌");
 				}
 			} else {
@@ -856,6 +893,7 @@
 				btnExport.style.display = 'none';
 				btnActivities.style.display = 'none';
 				btnChart.style.display = 'none';
+				btnUploadKML.style.display = 'none'; // Hide KML upload
 			}
 			map.closePopup();
 		});
@@ -1128,6 +1166,105 @@
 			location.reload();
 		}
 
+		// --- KML UPLOAD FUNCTIONS ---
+		const btnUploadKML = document.getElementById('btnUploadKML');
+		const kmlFileInput = document.getElementById('kmlFileInput');
+
+		btnUploadKML.addEventListener('click', () => {
+			document.getElementById('kmlUploadModal').style.display = 'flex';
+		});
+
+		// File input change listener
+		kmlFileInput.addEventListener('change', (e) => {
+			const file = e.target.files[0];
+			const preview = document.getElementById('kmlFilePreview');
+			const fileName = document.getElementById('kmlFileName');
+			const confirmBtn = document.getElementById('btnConfirmKMLUpload');
+
+			if (file) {
+				fileName.textContent = file.name;
+				preview.style.display = 'block';
+				confirmBtn.disabled = false;
+			} else {
+				preview.style.display = 'none';
+				confirmBtn.disabled = true;
+			}
+		});
+
+		function closeKMLUploadModal() {
+			document.getElementById('kmlUploadModal').style.display = 'none';
+			// Reset form
+			document.getElementById('kmlFileInput').value = '';
+			document.getElementById('kmlFilePreview').style.display = 'none';
+			document.getElementById('kmlUploadStatus').style.display = 'none';
+			document.getElementById('btnConfirmKMLUpload').disabled = true;
+		}
+
+		function handleKMLUpload() {
+			const fileInput = document.getElementById('kmlFileInput');
+			const file = fileInput.files[0];
+			const statusDiv = document.getElementById('kmlUploadStatus');
+
+			if (!file) {
+				alert('Por favor, selecione um arquivo .kml');
+				return;
+			}
+
+			if (!file.name.endsWith('.kml')) {
+				alert('Por favor, selecione um arquivo .kml válido');
+				return;
+			}
+
+			// Show loading status
+			statusDiv.innerHTML = '<strong style="color: #2196F3;">📤 Fazendo upload...</strong>';
+			statusDiv.style.display = 'block';
+			statusDiv.style.background = '#E3F2FD';
+
+			// Read file
+			const reader = new FileReader();
+			reader.onload = function (e) {
+				const kmlContent = e.target.result;
+
+				// Upload to cloud
+				uploadKMLToCloud(kmlContent, file.name)
+					.then(() => {
+						statusDiv.innerHTML = '<strong style="color: #4CAF50;">✅ Upload concluído com sucesso!</strong><br><small>O mapa será atualizado automaticamente.</small>';
+						statusDiv.style.background = '#E8F5E9';
+
+						// Cache locally
+						localforage.setItem('kmlFile', kmlContent);
+
+						// Reload map if it exists
+						if (typeof map !== 'undefined' && map) {
+							// Reinitialize map with new KML
+							setTimeout(() => {
+								closeKMLUploadModal();
+								alert('✅ Mapa atualizado! Recarregando página...');
+								location.reload();
+							}, 1500);
+						} else {
+							// No map yet, just close modal
+							setTimeout(() => {
+								closeKMLUploadModal();
+								alert('✅ Upload concluído! Carregue o mapa para visualizar.');
+							}, 1500);
+						}
+					})
+					.catch(error => {
+						statusDiv.innerHTML = `<strong style="color: #f44336;">❌ Erro no upload:</strong><br><small>${error.message}</small>`;
+						statusDiv.style.background = '#FFEBEE';
+						console.error('Upload error:', error);
+					});
+			};
+
+			reader.onerror = function () {
+				statusDiv.innerHTML = '<strong style="color: #f44336;">❌ Erro ao ler o arquivo</strong>';
+				statusDiv.style.background = '#FFEBEE';
+			};
+
+			reader.readAsText(file);
+		}
+
 		// --- ICONS ---
 		const greenIcon = new L.Icon({
 			iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
@@ -1156,20 +1293,18 @@
 			shadowSize: [41, 41]
 		});
 
-		let markersMap = {}; // Key: lat_lng -> Marker Object
+		let markersMap = {}; // Key: sanitized_name -> Marker Object
 
-		function updateMarkerIcon(lat, lng, status) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
+		function updateMarkerIcon(name, status) {
+			const key = sanitizeName(name);
 			const marker = markersMap[key];
 			if (marker) {
-				if (marker) {
-					if (status === 'done') {
-						marker.setIcon(greenIcon);
-					} else if (status === 'partial') {
-						marker.setIcon(orangeIcon);
-					} else {
-						marker.setIcon(redIcon);
-					}
+				if (status === 'done') {
+					marker.setIcon(greenIcon);
+				} else if (status === 'partial') {
+					marker.setIcon(orangeIcon);
+				} else {
+					marker.setIcon(redIcon);
 				}
 			}
 		}
@@ -1436,7 +1571,7 @@
 				const lng = item.lng;
 				const name = item.name.replace(/;/g, ","); // Sanitize for CSV
 
-				const data = getActivityData(lat, lng);
+				const data = getActivityData(item.name); // Using name instead of coordinates
 
 				let status = "Pendente";
 				let activity = "";
@@ -1479,9 +1614,18 @@
 		// --- 2. DATA LOGIC ---
 		// --- 2. DATA LOGIC ---
 
-		// Unified helper to get Activity Data (Object)
-		function getActivityData(lat, lng) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
+		// Sanitize name to create a valid key
+		function sanitizeName(name) {
+			return 'activity_' + name
+				.toLowerCase()
+				.normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
+				.replace(/[^a-z0-9]+/g, '_') // Replace non-alphanumeric with underscore
+				.replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+		}
+
+		// Unified helper to get Activity Data (Object) - NOW USING NAME
+		function getActivityData(name) {
+			const key = sanitizeName(name);
 
 			// 1. Try Memory Cache
 			if (activitiesCache[key]) {
@@ -1514,11 +1658,13 @@
 
 		// Deprecated alias for compatibility if referenced elsewhere
 		function getActivity(lat, lng) {
-			return getActivityData(lat, lng);
+			// Legacy support - not recommended
+			console.warn('getActivity(lat, lng) is deprecated. Use getActivityData(name) instead.');
+			return null;
 		}
 
-		function saveActivity(lat, lng) {
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
+		function saveActivity(name, lat, lng) {
+			const key = sanitizeName(name);
 
 			// Get manual text
 			const text = document.getElementById('activityInput').value;
@@ -1528,6 +1674,7 @@
 			const selectedActivities = Array.from(checkboxes).map(cb => cb.value);
 
 			const payload = {
+				name: name, // Store name for reference
 				text: text,
 				selectedActivities: selectedActivities,
 				lat: lat,
@@ -1547,7 +1694,7 @@
 
 			// Update cache immediately (optimistic update)
 			activitiesCache[key] = payload;
-			updateMarkerIcon(lat, lng, payload.status);
+			updateMarkerIcon(name, payload.status);
 
 			// Save to LocalStorage (always, for offline support)
 			localStorage.setItem(key, JSON.stringify(payload));
@@ -1581,10 +1728,10 @@
 			}
 		}
 
-		function concludeActivity(lat, lng, note) {
+		function concludeActivity(name, lat, lng, note) {
 			if (!currentUser) return alert("Você precisa estar logado!");
 
-			const key = `activity_${lat.toFixed(5)}_${lng.toFixed(5)} `;
+			const key = sanitizeName(name);
 			const userNote = note || "";
 
 			// Collect checked items
@@ -1595,7 +1742,7 @@
 			let status = 'done';
 
 			// Check against assigned activities
-			const activityData = getActivityData(lat, lng);
+			const activityData = getActivityData(name); // Changed from (lat, lng)
 			let totalAssigned = 0;
 			if (activityData && activityData.selectedActivities) {
 				totalAssigned = activityData.selectedActivities.length;
@@ -1630,7 +1777,7 @@
 			const cachedData = activitiesCache[key] || {};
 			Object.assign(cachedData, payload);
 			activitiesCache[key] = cachedData;
-			updateMarkerIcon(lat, lng, status);
+			updateMarkerIcon(name, status); // Changed from (lat, lng, status)
 
 			// Save to localStorage
 			localStorage.setItem(key, JSON.stringify(cachedData));
@@ -1852,7 +1999,7 @@
 
 					// Create Marker
 					// Default to Red (Pending) unless cache says Done
-					const activityData = getActivityData(lat, lng);
+					const activityData = getActivityData(name); // Using name instead of coordinates
 
 					// const isDone = activityData && activityData.status === 'done';
 					let initialIcon = redIcon;
@@ -1862,13 +2009,13 @@
 					}
 					const marker = L.marker([lat, lng], { icon: initialIcon });
 
-					// Register marker for updates
-					const markerKey = `activity_${lat.toFixed(5)}_${lng.toFixed(5)}`;
+					// Register marker for updates using name
+					const markerKey = sanitizeName(name);
 					markersMap[markerKey] = marker;
 
 					// Dynamic Popup Function
 					marker.bindPopup(() => {
-						const data = getActivityData(lat, lng);
+						const data = getActivityData(name); // Using name instead of coordinates
 
 						// Helper to get display text
 						let activityText = "";
@@ -1926,7 +2073,7 @@
                                     <label><small>Obs / Outros:</small></label>
                                     <textarea id="activityInput" style="width: 100%; height: 40px; margin-top: 2px;">${activityText}</textarea><br>
                                     <div style="margin: 5px 0; display: flex; justify-content: space-between; align-items: center;">
-                                        <button onclick="saveActivity(${lat}, ${lng})" style="cursor: pointer; background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 3px;">Salvar</button>
+                                        															<button onclick="saveActivity('${name.replace(/'/g, "\\'")}'  , ${lat}, ${lng})" style="cursor: pointer; background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 3px;">Salvar</button>
                                         <small style="color: #666;">${isDone ? '✅ Já Concluído' : (isPartial ? '🟠 Parcial' : '⏳ Pendente')}</small>
                                     </div>
                                     ${userNote ? `<div style="margin-top:5px; border-top:1px solid #eee; padding-top:5px;"><small><strong>💬 Recado do Técnico:</strong> ${userNote}</small></div>` : ''}
@@ -2075,7 +2222,7 @@
 
 											<div style="margin-top: 10px;">
 												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
-												<button onclick="concludeActivity(${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+												<button onclick="concludeActivity('${name.replace(/'/g, "\\'")}'  , ${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
 													${btnText}
 												</button>
 											</div>
@@ -2191,7 +2338,7 @@
 					// Check visibility using the captured 'layers' object
 					if (layers[item.group] && map.hasLayer(layers[item.group])) {
 						total++;
-						const data = getActivityData(item.lat, item.lng);
+						const data = getActivityData(item.name); // Using name instead of coordinates
 						if (data && data.status === 'done') {
 							completed++;
 						}
@@ -2860,122 +3007,4 @@
 			// User email
 			if (currentUser) {
 				html += `<div style="padding: 10px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
-				<div style="font-size: 12px; color: #666;">Logado como:</div>
-				<div style="font-weight: bold; color: #2e7d32;">${currentUser.email}</div>
-			</div>`;
-			}
-
-			// Timer
-			const timerDisplay = document.getElementById('timerDisplay');
-			if (timerDisplay && timerDisplay.textContent !== '--:--:--') {
-				html += `<div style="padding: 15px; background: #fff3e0; border-radius: 8px; margin-bottom: 15px; text-align: center;">
-				<div style="font-size: 12px; color: #666;">⏱️ Tempo até Reset:</div>
-				<div style="font-size: 24px; font-weight: bold; color: ${timerDisplay.style.color}; font-family: monospace;">
-					${timerDisplay.textContent}
-				</div>
-			</div>`;
-			}
-
-			// Dashboard Stats (if available)
-			const statsContent = document.getElementById('statsContent');
-			if (statsContent && statsContent.innerHTML) {
-				html += `<div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #2196F3;">
-				<h4 style="margin: 0 0 10px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
-				<div id="mobileStatsPlaceholder"></div>
-			</div>`;
-			}
-
-			// Layer Controls (if map exists)
-			if (typeof map !== 'undefined' && map) {
-				html += `<div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #4CAF50;">
-				<h4 style="margin: 0 0 10px 0; color: #333;">🗺️ Camadas do Mapa</h4>
-				<div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-					<button onclick="window.toggleAllLayers(true); populateMobileMenu();" 
-						style="flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; font-size: 12px; font-weight: 600;">
-						✓ Marcar Todos
-					</button>
-					<button onclick="window.toggleAllLayers(false); populateMobileMenu();" 
-						style="flex: 1; padding: 8px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
-						✗ Desmarcar Todos
-					</button>
-				</div>
-				<div id="mobileLayersList" style="max-height: 300px; overflow-y: auto; background: white; padding: 10px; border-radius: 4px;">
-					<!-- Populated below -->
-				</div>
-			</div>`;
-			}
-
-			// Admin toggle
-			html += `<div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
-			<label style="display: flex; align-items: center; cursor: pointer;">
-				<input type="checkbox" id="mobileAdminToggle" ${isAdmin ? 'checked' : ''} 
-					onchange="document.getElementById('adminToggle').checked = this.checked; document.getElementById('adminToggle').dispatchEvent(new Event('change'));">
-				<span style="margin-left: 10px; font-weight: 600;">🔧 Modo Admin</span>
-			</label>
-		</div>`;
-
-			// Admin buttons (if admin)
-			if (isAdmin) {
-				html += `<div style="margin-bottom: 15px;">
-				<button onclick="document.getElementById('btnConfig').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					⚙️ Configurações
-				</button>
-				<button onclick="document.getElementById('btnUsers').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #FF9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					👥 Usuários
-				</button>
-				<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📥 Exportar Excel
-				</button>
-				<button onclick="document.getElementById('btnActivities').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #9C27B0; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📋 Tipos de Atividade
-				</button>
-				<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #00BCD4; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📊 Gráfico
-				</button>
-			</div>`;
-			}
-
-			// Logout button
-			html += `<button onclick="performLogout()" 
-			style="width: 100%; padding: 12px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-			Sair
-		</button>`;
-
-			menuContent.innerHTML = html;
-
-			// Inject stats content after rendering (to avoid HTML escaping)
-			if (statsContent && statsContent.innerHTML) {
-				const placeholder = document.getElementById('mobileStatsPlaceholder');
-				if (placeholder) {
-					placeholder.innerHTML = statsContent.innerHTML;
-				}
-			}
-
-			// Populate layers dynamically (if map exists)
-			if (typeof map !== 'undefined' && map && typeof window.overlayMaps !== 'undefined') {
-				const layersList = document.getElementById('mobileLayersList');
-				if (layersList) {
-					let layersHTML = '';
-					for (const layerName in window.overlayMaps) {
-						const layer = window.overlayMaps[layerName];
-						const isChecked = map.hasLayer(layer);
-						layersHTML += `<label style="display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;">
-						<input type="checkbox" ${isChecked ? 'checked' : ''} 
-							onchange="if(this.checked) { map.addLayer(window.overlayMaps['${layerName}']); } else { map.removeLayer(window.overlayMaps['${layerName}']); } if(typeof updateStats === 'function') updateStats();">
-						<span style="margin-left: 8px;">${layerName}</span>
-					</label>`;
-					}
-					layersList.innerHTML = layersHTML;
-				}
-			}
-		}
-
-	</script>
-</body>
-
-</html>
+			
