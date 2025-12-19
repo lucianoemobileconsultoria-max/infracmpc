@@ -509,6 +509,7 @@
 		const btnActivities = document.getElementById('btnActivities');
 
 		let isAdmin = false;
+		let userProfile = null; // Tipo de perfil: 'admin' ou 'infracmpc' ou null
 		let db = null;
 		let auth = null;
 		let currentUser = null;
@@ -863,31 +864,50 @@
 			autoLoadMap();
 		}, 1000);
 
-		// Toggle Admin Logic
+		// Toggle Admin Logic - Sistema de Perfis
 		adminToggle.addEventListener('change', (e) => {
 			if (e.target.checked) {
 				const password = prompt("Digite a senha de administrador:");
+				// Perfil ADMIN COMPLETO - Senha: 789512
 				if (password === "789512") {
 					isAdmin = true;
+					userProfile = 'admin';
 					btnConfig.style.display = 'inline-block';
 					btnUsers.style.display = 'inline-block'; // Show user management
 					btnExport.style.display = 'inline-block';
 					btnActivities.style.display = 'inline-block';
 					btnChart.style.display = 'inline-block';
 					btnUploadKML.style.display = 'inline-block'; // Show KML upload
-					alert("Modo Admin ativado! ✅");
-				} else {
+					alert("Modo Admin Completo ativado! ✅\n\nAcesso total ao sistema.");
+				}
+				// Perfil INFRACMPC - Senha: infracmpc - Apenas Gráfico e Exportação
+				else if (password === "infracmpc") {
+					isAdmin = false; // Não é admin completo
+					userProfile = 'infracmpc';
+					btnConfig.style.display = 'none';
+					btnUsers.style.display = 'none';
+					btnExport.style.display = 'inline-block'; // ✅ PERMITE EXPORTAR
+					btnActivities.style.display = 'none';
+					btnChart.style.display = 'inline-block'; // ✅ PERMITE VER GRÁFICO
+					btnUploadKML.style.display = 'none';
+					alert("Perfil INFRACMPC ativado! ✅\n\nVocê pode:\n• Ver gráficos\n• Exportar dados");
+				}
+				// Senha incorreta
+				else {
 					e.target.checked = false;
 					isAdmin = false;
+					userProfile = null;
 					btnConfig.style.display = 'none';
 					btnUsers.style.display = 'none';
 					btnExport.style.display = 'none';
+					btnActivities.style.display = 'none';
 					btnChart.style.display = 'none';
 					btnUploadKML.style.display = 'none';
 					alert("Senha incorreta! ❌");
 				}
 			} else {
 				isAdmin = false;
+				userProfile = null;
 				btnConfig.style.display = 'none';
 				btnUsers.style.display = 'none';
 				btnExport.style.display = 'none';
@@ -1728,7 +1748,7 @@
 			}
 		}
 
-		function concludeActivity(name, lat, lng, note) {
+		async function concludeActivity(name, lat, lng, note) {
 			if (!currentUser) return alert("Você precisa estar logado!");
 
 			const key = sanitizeName(name);
@@ -1762,21 +1782,38 @@
 					debugMsg = " (Todos feitos)";
 				}
 			} else {
-				debugMsg = " (Sem lista definida, assumindo Concluído)";
+				if (totalAssigned > 0 && completedItems.length < totalAssigned) {
+					status = 'partial';
+				}
+			}
+
+			// Get photo if uploaded
+			let photoBase64 = null;
+			try {
+				photoBase64 = await getPhotoBase64();
+			} catch (error) {
+				console.error('Error converting photo:', error);
+				alert('⚠️ Erro ao processar foto. Continuando sem foto.');
 			}
 
 			const payload = {
-				status: status,
+				completedItems: completedItems,
 				completedBy: currentUser.email,
 				completedAt: isOnline && db ? firebase.firestore.FieldValue.serverTimestamp() : new Date(),
 				userNote: userNote,
-				completedItems: completedItems
+				status: status,
+				name: name,
+				lat: lat,
+				lng: lng
 			};
 
+			// Add photo only if exists
+			if (photoBase64) {
+				payload.foto = photoBase64;
+			}
+
 			// Update local cache immediately
-			const cachedData = activitiesCache[key] || {};
-			Object.assign(cachedData, payload);
-			activitiesCache[key] = cachedData;
+			activitiesCache[key] = { ...activitiesCache[key], ...payload };
 			updateMarkerIcon(name, status); // Changed from (lat, lng, status)
 
 			// Save to localStorage
@@ -2222,7 +2259,19 @@
 
 											<div style="margin-top: 10px;">
 												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
-												<button onclick="concludeActivity('${name.replace(/'/g, "\\'")}'  , ${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+												
+												<!-- FIELD FOTO -->
+												<div style="margin-bottom: 5px;">
+													<label style="display: block; margin-bottom: 3px; font-size: 0.9em; color: #666;">📸 Foto (opcional):</label>
+													<input type="file" id="photoInput" accept="image/jpeg,image/jpg,image/png" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em;">
+													<div id="photoPreview" style="display: ${data?.foto ? 'block' : 'none'}; margin-top: 5px;">
+														<img id="photoPreviewImg" src="${data?.foto || ''}" style="max-width: 100%; max-height: 150px; border-radius: 4px; border: 1px solid #ddd;">
+														<button onclick="removePhoto(); return false;" style="margin-top: 3px; padding: 4px 8px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">🗑️ Remover Foto</button>
+													</div>
+													<small id="photoError" style="color: #f44336; display: none;"></small>
+												</div>
+												
+												<button onclick="concludeActivity('${name.replace(/'/g, "\\'")}', ${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
 													${btnText}
 												</button>
 											</div>
@@ -2373,7 +2422,76 @@
 			updateStats();
 		}
 
-		// ===== DAILY RESET TIMER =====
+		// --- PHOTO HANDLING FUNCTIONS ---
+
+		// Preview photo when selected
+		document.addEventListener('change', function (e) {
+			if (e.target && e.target.id === 'photoInput') {
+				const file = e.target.files[0];
+				const preview = document.getElementById('photoPreview');
+				const previewImg = document.getElementById('photoPreviewImg');
+				const errorMsg = document.getElementById('photoError');
+
+				if (!file) return;
+
+				// Validate size (500KB max)
+				const maxSize = 500 * 1024; // 500KB in bytes
+				if (file.size > maxSize) {
+					errorMsg.textContent = '⚠️ Foto muito grande! Máximo: 500KB';
+					errorMsg.style.display = 'block';
+					e.target.value = ''; // Clear input
+					preview.style.display = 'none';
+					return;
+				}
+
+				errorMsg.style.display = 'none';
+
+				// Show preview
+				const reader = new FileReader();
+				reader.onload = function (e) {
+					previewImg.src = e.target.result;
+					preview.style.display = 'block';
+				};
+				reader.readAsDataURL(file);
+			}
+		});
+
+		// Remove photo
+		window.removePhoto = function () {
+			const photoInput = document.getElementById('photoInput');
+			const preview = document.getElementById('photoPreview');
+			const errorMsg = document.getElementById('photoError');
+
+			if (photoInput) photoInput.value = '';
+			if (preview) preview.style.display = 'none';
+			if (errorMsg) errorMsg.style.display = 'none';
+		};
+
+		// Convert photo to Base64 for storage
+		function getPhotoBase64() {
+			return new Promise((resolve, reject) => {
+				const photoInput = document.getElementById('photoInput');
+				if (!photoInput || !photoInput.files || !photoInput.files[0]) {
+					resolve(null); // No photo selected
+					return;
+				}
+
+				const file = photoInput.files[0];
+				const reader = new FileReader();
+
+				reader.onload = function (e) {
+					resolve(e.target.result);
+				};
+
+				reader.onerror = function (error) {
+					reject(error);
+				};
+
+				reader.readAsDataURL(file);
+			});
+		}
+
+		// --- DAILY RESET TIMER =====
 
 		function calculateTimeUntilMidnight() {
 			const now = new Date();
@@ -2700,33 +2818,30 @@
 
 			// Create chart
 			activityChartInstance = new Chart(ctx, {
-				type: 'line',
+				type: 'bar', // Changed from 'line' to 'bar'
 				data: {
 					labels: labels,
 					datasets: [
 						{
 							label: '✅ Concluídos',
 							data: completedData,
-							borderColor: '#4CAF50',
-							backgroundColor: 'rgba(76, 175, 80, 0.1)',
-							tension: 0.4,
-							fill: true
+							backgroundColor: '#4CAF50',
+							borderColor: '#2e7d32',
+							borderWidth: 1
 						},
 						{
 							label: '🟠 Parciais',
 							data: partialData,
-							borderColor: '#ff9800',
-							backgroundColor: 'rgba(255, 152, 0, 0.1)',
-							tension: 0.4,
-							fill: true
+							backgroundColor: '#ff9800',
+							borderColor: '#ef6c00',
+							borderWidth: 1
 						},
 						{
 							label: '⏳ Pendentes',
 							data: pendingData,
-							borderColor: '#f44336',
-							backgroundColor: 'rgba(244, 67, 54, 0.1)',
-							tension: 0.4,
-							fill: true
+							backgroundColor: '#f44336',
+							borderColor: '#c62828',
+							borderWidth: 1
 						}
 					]
 				},
@@ -3007,4 +3122,139 @@
 			// User email
 			if (currentUser) {
 				html += `<div style="padding: 10px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
-			
+				<div style="font-size: 12px; color: #666;">Logado como:</div>
+				<div style="font-weight: bold; color: #2e7d32;">${currentUser.email}</div>
+			</div>`;
+			}
+
+			// Timer
+			const timerDisplay = document.getElementById('timerDisplay');
+			if (timerDisplay && timerDisplay.textContent !== '--:--:--') {
+				html += `<div style="padding: 15px; background: #fff3e0; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+				<div style="font-size: 12px; color: #666;">⏱️ Tempo até Reset:</div>
+				<div style="font-size: 24px; font-weight: bold; color: ${timerDisplay.style.color}; font-family: monospace;">
+					${timerDisplay.textContent}
+				</div>
+			</div>`;
+			}
+
+			// Dashboard Stats (if available)
+			const statsContent = document.getElementById('statsContent');
+			if (statsContent && statsContent.innerHTML) {
+				html += `<div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #2196F3;">
+				<h4 style="margin: 0 0 10px 0; border-bottom: 2px solid #2196F3; padding-bottom: 5px; color: #333;">📊 Dashboard Geral</h4>
+				<div id="mobileStatsPlaceholder"></div>
+			</div>`;
+			}
+
+			// Layer Controls (if map exists)
+			if (typeof map !== 'undefined' && map) {
+				html += `<div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #4CAF50;">
+				<h4 style="margin: 0 0 10px 0; color: #333;">🗺️ Camadas do Mapa</h4>
+				<div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+					<button onclick="window.toggleAllLayers(true); populateMobileMenu();" 
+						style="flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; font-size: 12px; font-weight: 600;">
+						✓ Marcar Todos
+					</button>
+					<button onclick="window.toggleAllLayers(false); populateMobileMenu();" 
+						style="flex: 1; padding: 8px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+						✗ Desmarcar Todos
+					</button>
+				</div>
+				<div id="mobileLayersList" style="max-height: 300px; overflow-y: auto; background: white; padding: 10px; border-radius: 4px;">
+					<!-- Populated below -->
+				</div>
+			</div>`;
+			}
+
+			// Admin toggle
+			html += `<div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
+			<label style="display: flex; align-items: center; cursor: pointer;">
+				<input type="checkbox" id="mobileAdminToggle" ${isAdmin ? 'checked' : ''} 
+					onchange="document.getElementById('adminToggle').checked = this.checked; document.getElementById('adminToggle').dispatchEvent(new Event('change'));">
+				<span style="margin-left: 10px; font-weight: 600;">🔧 Modo Admin</span>
+			</label>
+		</div>`;
+
+			// Admin buttons (if admin completo)
+			if (isAdmin) {
+				html += `<div style="margin-bottom: 15px;">
+				<button onclick="document.getElementById('btnConfig').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					⚙️ Configurações
+				</button>
+				<button onclick="document.getElementById('btnUsers').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #FF9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					👥 Usuários
+				</button>
+				<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📥 Exportar Excel
+				</button>
+				<button onclick="document.getElementById('btnActivities').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #9C27B0; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📋 Tipos de Atividade
+				</button>
+				<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #00BCD4; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📊 Gráfico
+				</button>
+				<button onclick="document.getElementById('btnUploadKML').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #673AB7; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📂 Upload KML
+				</button>
+			</div>`;
+			}
+			// Perfil INFRACMPC - Apenas Gráfico e Exportação
+			else if (userProfile === 'infracmpc') {
+				html += `<div style="margin-bottom: 15px;">
+				<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📥 Exportar Excel
+				</button>
+				<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
+					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #00BCD4; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+					📊 Gráfico
+				</button>
+			</div>`;
+			}
+
+			// Logout button
+			html += `<button onclick="performLogout()" 
+			style="width: 100%; padding: 12px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+			Sair
+		</button>`;
+
+			menuContent.innerHTML = html;
+
+			// Inject stats content after rendering (to avoid HTML escaping)
+			if (statsContent && statsContent.innerHTML) {
+				const placeholder = document.getElementById('mobileStatsPlaceholder');
+				if (placeholder) {
+					placeholder.innerHTML = statsContent.innerHTML;
+				}
+			}
+
+			// Populate layers dynamically (if map exists)
+			if (typeof map !== 'undefined' && map && typeof window.overlayMaps !== 'undefined') {
+				const layersList = document.getElementById('mobileLayersList');
+				if (layersList) {
+					let layersHTML = '';
+					for (const layerName in window.overlayMaps) {
+						const layer = window.overlayMaps[layerName];
+						const isChecked = map.hasLayer(layer);
+						layersHTML += `<label style="display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;">
+						<input type="checkbox" ${isChecked ? 'checked' : ''} 
+							onchange="if(this.checked) { map.addLayer(window.overlayMaps['${layerName}']); } else { map.removeLayer(window.overlayMaps['${layerName}']); } if(typeof updateStats === 'function') updateStats();">
+						<span style="margin-left: 8px;">${layerName}</span>
+					</label>`;
+					}
+					layersList.innerHTML = layersHTML;
+				}
+			}
+		}
+
+	</script>
+</body>
+
+</html>
