@@ -2136,7 +2136,15 @@
                             `;
 						} else {
 							// USER VIEW
-							const hasContent = selectedList.length > 0 || activityText;
+							// MODIFIED: Show activities from group even if not saved individually
+							const filteredActivities = activityTypesCache.filter(type => {
+								return type.assignedGroups && type.assignedGroups.includes(groupName);
+							});
+							const groupActivitiesList = filteredActivities.map(t => t.name);
+
+							// Use saved activities if exist, otherwise use group activities
+							const activitiesToShow = selectedList.length > 0 ? selectedList : groupActivitiesList;
+							const hasContent = activitiesToShow.length > 0 || activityText;
 
 							if (hasContent) {
 								let displayHtml = "";
@@ -2223,9 +2231,9 @@
 									const completedItems = data ? (data.completedItems || []) : [];
 
 									// 1. Build Checkbox List (Always Editable)
-									if (selectedList.length > 0) {
+									if (activitiesToShow.length > 0) {
 										displayHtml += `<div style="text-align:left; margin:5px 0; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:5px;">`;
-										selectedList.forEach(item => {
+										activitiesToShow.forEach(item => {
 											const isChecked = completedItems.includes(item) ? 'checked' : '';
 											displayHtml += `
 												<label style="display:block; margin-bottom:5px; cursor:pointer;">
