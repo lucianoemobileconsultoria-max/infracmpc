@@ -2178,7 +2178,7 @@
 										displayHtml += `<p style="margin:5px 0;"><em>${activityText}</em></p>`;
 									}
 	
-									const date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
+									const date = (data && data.completedAt) ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
 	
 									const statusTitle = isDone ? '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>' : '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
 									const bgColor = isDone ? '#e8f5e9' : '#fff3e0';
@@ -2190,7 +2190,7 @@
 											${displayHtml}
 											${userNote ? `<br><small>💬 "<em>${userNote}</em>"</small><br>` : ''}
 											<hr style="border: 0; border-top: 1px solid #ddd; margin: 5px 0;">
-											<small>👤 <b>${data.completedBy || 'Usuário'}</b></small><br>
+											<small>👤 <b>${(data && data.completedBy) || 'Usuário'}</b></small><br>
 											<small>🕒 ${date}</small>
 											${isPartial ? `<div style="margin-top:10px;"><button onclick="concludeActivity(${lat}, ${lng}, prompt('Nova observação?'))" style="font-size:0.8em; cursor:pointer;">Continuar / Atualizar</button></div>` : ''}
 										</div>
@@ -2277,7 +2277,7 @@
 										btnColor = '#ff9800';
 									}
 
-									const date = data.completedAt ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
+									const date = (data && data.completedAt) ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
 
 									content += `
 										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
@@ -2288,7 +2288,7 @@
 											
 											${(isDone || isPartial) ? `
 												<hr style="border: 0; border-top: 1px solid #ddd; margin: 5px 0;">
-												<small>👤 <b>${data.completedBy || 'Usuário'}</b></small><br>
+												<small>👤 <b>${(data && data.completedBy) || 'Usuário'}</b></small><br>
 												<small>🕒 ${date}</small>
 											` : ''}
 
