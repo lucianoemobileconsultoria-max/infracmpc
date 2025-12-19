@@ -2472,7 +2472,7 @@
 				// Validate size (500KB max)
 				const maxSize = 500 * 1024; // 500KB in bytes
 				if (file.size > maxSize) {
-					errorMsg.textContent = '⚠️ Foto muito grande! Máximo: 500KB';
+					errorMsg.textContent = '⚠️ Foto muito grande! Máximo: 2MB';
 					errorMsg.style.display = 'block';
 					e.target.value = ''; // Clear input
 					preview.style.display = 'none';
@@ -2502,7 +2502,7 @@
 			if (errorMsg) errorMsg.style.display = 'none';
 		};
 
-		// Convert photo to Base64 for storage
+		// Convert photo to Base64 for storage (with compression)
 		function getPhotoBase64() {
 			return new Promise((resolve, reject) => {
 				const photoInput = document.getElementById('photoInput');
@@ -2512,17 +2512,18 @@
 				}
 
 				const file = photoInput.files[0];
-				const reader = new FileReader();
 
-				reader.onload = function (e) {
-					resolve(e.target.result);
-				};
-
-				reader.onerror = function (error) {
-					reject(error);
-				};
-
-				reader.readAsDataURL(file);
+				// Compress before returning
+				compressImage(file)
+					.then(compressedDataUrl => resolve(compressedDataUrl))
+					.catch(err => {
+						console.error('Compression failed, using original:', err);
+						// Fallback to original if compression fails
+						const reader = new FileReader();
+						reader.onload = (e) => resolve(e.target.result);
+						reader.onerror = reject;
+						reader.readAsDataURL(file);
+					});
 			});
 		}
 
