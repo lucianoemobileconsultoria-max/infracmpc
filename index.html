@@ -1805,14 +1805,6 @@
 				}
 			}
 
-			// Get photo if uploaded
-			let photoBase64 = null;
-			try {
-				photoBase64 = await getPhotoBase64();
-			} catch (error) {
-				console.error('Error converting photo:', error);
-				alert('⚠️ Erro ao processar foto. Continuando sem foto.');
-			}
 
 			const payload = {
 				completedItems: completedItems,
@@ -1825,10 +1817,6 @@
 				lng: lng
 			};
 
-			// Add photo only if exists
-			if (photoBase64) {
-				payload.foto = photoBase64;
-			}
 
 			// Update local cache immediately
 			activitiesCache[key] = { ...activitiesCache[key], ...payload };
@@ -2294,17 +2282,6 @@
 
 											<div style="margin-top: 10px;">
 												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
-												
-												<!-- FIELD FOTO -->
-												<div style="margin-bottom: 5px;">
-													<label style="display: block; margin-bottom: 3px; font-size: 0.9em; color: #666;">📸 Foto (opcional):</label>
-													<input type="file" id="photoInput" accept="image/jpeg,image/jpg,image/png" capture="environment" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em;">
-													<div id="photoPreview" style="display: ${data?.foto ? 'block' : 'none'}; margin-top: 5px;">
-														<img id="photoPreviewImg" src="${data?.foto || ''}" style="max-width: 100%; max-height: 150px; border-radius: 4px; border: 1px solid #ddd;">
-														<button onclick="removePhoto(); return false;" style="margin-top: 3px; padding: 4px 8px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">🗑️ Remover Foto</button>
-													</div>
-													<small id="photoError" style="color: #f44336; display: none;"></small>
-												</div>
 												
 												<button onclick="concludeActivity('${name.replace(/'/g, "\\'")}', ${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
 													${btnText}
