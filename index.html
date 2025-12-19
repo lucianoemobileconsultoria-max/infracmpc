@@ -2146,6 +2146,15 @@
 							const activitiesToShow = selectedList.length > 0 ? selectedList : groupActivitiesList;
 							const hasContent = activitiesToShow.length > 0 || activityText;
 
+							// DEBUG: Log to help troubleshoot
+							console.log('UserView DEBUG:', {
+								groupName,
+								activityTypesCacheLength: activityTypesCache.length,
+								filteredActivitiesLength: filteredActivities.length,
+								activitiesToShowLength: activitiesToShow.length,
+								hasContent
+							});
+
 							if (hasContent) {
 								let displayHtml = "";
 								const completedItems = data ? (data.completedItems || []) : [];
@@ -2305,7 +2314,7 @@
 									`;
 								}
 							} else {
-								content += `<p style="color: #777;"><em>Nenhuma atividade cadastrada.</em></p>`;
+								content += `<p style="color: #777;"><em>Nenhuma atividade cadastrada para este grupo.</em><br><small>Peça ao administrador para configurar atividades para "${groupName}".</small></p>`;
 							}
 						}
 
