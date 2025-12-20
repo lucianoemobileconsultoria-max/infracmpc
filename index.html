@@ -739,6 +739,11 @@
 					currentUser = userCredential.user;
 					console.log("User logged in:", currentUser.email);
 					checkAdminRole(currentUser.email);
+
+					// 🔧 FIX: Load map after successful login
+					setTimeout(() => {
+						autoLoadMap();
+					}, 500);
 				})
 				.catch((error) => {
 					errorMsg.textContent = "Erro: " + error.message;
@@ -1776,35 +1781,29 @@
 			const checkboxes = document.querySelectorAll('.user-check:checked');
 			const completedItems = Array.from(checkboxes).map(cb => cb.value);
 
-			// Logic to determine status
-			let status = 'done';
+			// 🔧 FIX: Count AVAILABLE checkboxes, not saved activities
+			const allCheckboxes = document.querySelectorAll('.user-check');
+			const totalAssigned = allCheckboxes.length;
 
-			// Check against assigned activities
-			const activityData = getActivityData(name); // Changed from (lat, lng)
-			let totalAssigned = 0;
-			if (activityData && activityData.selectedActivities) {
-				totalAssigned = activityData.selectedActivities.length;
-			}
+			// Logic to determine status
+			let status = 'pending'; // Default
 
 			let debugMsg = "";
 
 			if (totalAssigned > 0) {
+				// Atividades disponíveis - usar lógica de %
 				if (completedItems.length === 0) {
 					status = 'pending';
 					debugMsg = " (Nenhum item feito)";
 				} else if (completedItems.length < totalAssigned) {
-					status = 'partial';
+					status = 'partial';  // 🟠 1-99% = LARANJA
 					debugMsg = ` (Parcial: ${completedItems.length} / ${totalAssigned})`;
 				} else {
-					status = 'done';
+					status = 'done';     // 🟢 100% = VERDE
 					debugMsg = " (Todos feitos)";
 				}
-			} else {
-				if (totalAssigned > 0 && completedItems.length < totalAssigned) {
-					status = 'partial';
-				}
 			}
-
+			// else: fica 'pending' (sem checkboxes)
 
 			const payload = {
 				completedItems: completedItems,
@@ -1817,13 +1816,12 @@
 				lng: lng
 			};
 
-
 			// Update local cache immediately
 			activitiesCache[key] = { ...activitiesCache[key], ...payload };
-			updateMarkerIcon(name, status); // Changed from (lat, lng, status)
+			updateMarkerIcon(name, status); // updateMarkerIcon converts status to icon internally
 
 			// Save to localStorage
-			localStorage.setItem(key, JSON.stringify(cachedData));
+			localStorage.setItem(key, JSON.stringify(payload));
 
 			const msg = status === 'partial' ? "Salvo como Parcial! 🟠" : (status === 'done' ? "Concluído! 🎉" : "Salvo como Pendente! ⚠️");
 
@@ -2212,7 +2210,7 @@
 											<div style="margin-top: 10px;">
 												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
 												<button onclick="concludeActivity(${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-													${isPartial ? 'ATUALIZAR / CONCLUIR' : '✅ MARCAR COMO CONCLUÍDO'}
+													${isPartial ? ' ATUALIZAR DADOS' : '✅ ATUALIZAR DADOS'}
 												</button>
 											</div>
 										</div>
@@ -2248,20 +2246,20 @@
 									let statusTitle = '<strong>⚠️ Atividade Pendente:</strong>';
 									let bgColor = '#fff3e0';
 									let borderColor = '#ff9800';
-									let btnText = '✅ MARCAR COMO CONCLUÍDO';
+									let btnText = '✅ ATUALIZAR DADOS';
 									let btnColor = '#2196F3'; // Blue
 
 									if (isDone) {
 										statusTitle = '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>';
 										bgColor = '#e8f5e9';
 										borderColor = '#4CAF50';
-										btnText = 'ATUALIZAR STATUS';
+										btnText = ' ATUALIZAR DADOS';
 										btnColor = '#4CAF50';
 									} else if (isPartial) {
 										statusTitle = '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
 										bgColor = '#fff3e0';
 										borderColor = '#ff9800';
-										btnText = 'ATUALIZAR / CONCLUIR';
+										btnText = ' ATUALIZAR DADOS';
 										btnColor = '#ff9800';
 									}
 
