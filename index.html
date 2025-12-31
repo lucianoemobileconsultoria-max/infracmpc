@@ -3047,40 +3047,63 @@
 			allPlacemarksData.forEach(item => {
 				const activityData = getActivityData(item.lat, item.lng);
 
-				// Determine status
-				let status = 'Pendente';
-				if (activityData?.status === 'done') status = 'Concluído';
-				else if (activityData?.status === 'partial') status = 'Parcial';
+				// Helper to push row
+				const addRow = (data, checkinDetails) => {
+					// Determine status
+					let status = 'Pendente';
+					if (data?.status === 'done') status = 'Concluído';
+					else if (data?.status === 'partial') status = 'Parcial';
 
-				// Format date
-				let completedDate = '';
-				if (activityData?.completedAt) {
-					if (activityData.completedAt.seconds) {
-						completedDate = new Date(activityData.completedAt.seconds * 1000).toLocaleString('pt-BR');
-					} else if (activityData.completedAt instanceof Date) {
-						completedDate = activityData.completedAt.toLocaleString('pt-BR');
+					// Format date
+					let completedDate = '';
+					// Use checkinDetails timestamp if available, else data.completedAt
+					const ts = checkinDetails?.timestamp || data?.completedAt;
+
+					if (ts) {
+						if (ts.seconds) { // Firestore timestamp
+							completedDate = new Date(ts.seconds * 1000).toLocaleString('pt-BR');
+						} else if (ts instanceof Date) {
+							completedDate = ts.toLocaleString('pt-BR');
+						} else if (typeof ts === 'string') {
+							completedDate = new Date(ts).toLocaleString('pt-BR');
+						}
 					}
-				}
 
-				const row = {
-					'Grupo': item.group,
-					'Nome': item.name,
-					'Latitude': item.lat.toFixed(6),
-					'Longitude': item.lng.toFixed(6),
-					'Status': status,
-					'Atividades Disponíveis (Admin)': activityData?.selectedActivities?.join(', ') || '',
-					'Checkboxes Marcados pelo Usuário': activityData?.completedItems?.join(', ') || '',
-					'Observações Admin': activityData?.text || '',
-					'Observações do Usuário': activityData?.userNote || '',
-					'Concluído Por': activityData?.completedBy || '',
-					'Data/Hora de Conclusão': completedDate,
-					'Total de Itens': activityData?.selectedActivities?.length || 0,
-					'Itens Concluídos': activityData?.completedItems?.length || 0,
-					'Progresso': activityData?.selectedActivities?.length > 0
-						? `${activityData.completedItems?.length || 0}/${activityData.selectedActivities.length}`
-						: '0/0'
+					const row = {
+						'Grupo': item.group,
+						'Nome': item.name,
+						'Latitude': item.lat.toFixed(6),
+						'Longitude': item.lng.toFixed(6),
+						'Status': status,
+						'Horário Check-in': checkinDetails?.checkinTime || '',
+						'Atividades Disponíveis (Admin)': data?.selectedActivities?.join(', ') || '',
+						'Checkboxes Marcados': checkinDetails?.completedItems?.join(', ') || data?.completedItems?.join(', ') || '',
+						'Observações Admin': data?.text || '',
+						'Observações do Usuário': checkinDetails?.userNote || data?.userNote || '',
+						'Concluído Por': checkinDetails?.completedBy || data?.completedBy || '',
+						'Data/Hora de Conclusão': completedDate,
+						'Total de Itens': data?.selectedActivities?.length || 0,
+						'Itens Concluídos': (checkinDetails?.completedItems || data?.completedItems || []).length,
+						'Progresso': data?.selectedActivities?.length > 0
+							? `${(checkinDetails?.completedItems || data?.completedItems || []).length}/${data.selectedActivities.length}`
+							: '0/0'
+					};
+					exportData.push(row);
 				};
-				exportData.push(row);
+
+				// Check for history
+				const hasHistory = activityData && activityData.history && activityData.history.length > 0;
+
+				if (hasHistory) {
+					// Export EACH history entry as a row
+					activityData.history.forEach(entry => {
+						addRow(activityData, entry);
+					});
+				} else {
+					// Fallback for flat data or empty history
+					// Only export if it actually has flat data? No, export pending rows too!
+					addRow(activityData, null);
+				}
 			});
 
 			// Create workbook
@@ -3149,36 +3172,50 @@
 						for (const key in data.activities) {
 							const activity = data.activities[key];
 
-							// Determine status
-							let status = 'Pendente';
-							if (activity.status === 'done') status = 'Concluído';
-							else if (activity.status === 'partial') status = 'Parcial';
+							// Helper to add row (reused concept)
+							const addRow = (actData, checkinDetails) => {
+								// Determine status
+								let status = 'Pendente';
+								if (actData.status === 'done') status = 'Concluído';
+								else if (actData.status === 'partial') status = 'Parcial';
 
-							// Format date
-							let completedDate = '';
-							if (activity.completedAt) {
-								if (activity.completedAt.seconds) {
-									completedDate = new Date(activity.completedAt.seconds * 1000).toLocaleString('pt-BR');
-								} else if (activity.completedAt instanceof Date) {
-									completedDate = activity.completedAt.toLocaleString('pt-BR');
+								// Format date
+								let completedDate = '';
+								const ts = checkinDetails?.timestamp || actData?.completedAt;
+								if (ts) {
+									if (ts.seconds) {
+										completedDate = new Date(ts.seconds * 1000).toLocaleString('pt-BR');
+									} else if (ts instanceof Date) {
+										completedDate = ts.toLocaleString('pt-BR');
+									} else if (typeof ts === 'string') {
+										completedDate = new Date(ts).toLocaleString('pt-BR');
+									}
 								}
-							}
 
-							activities.push({
-								'Chave': key,
-								'Status': status,
-								'Atividades Disponíveis (Admin)': activity.selectedActivities?.join(', ') || '',
-								'Checkboxes Marcados pelo Usuário': activity.completedItems?.join(', ') || '',
-								'Observações Admin': activity.text || '',
-								'Observações do Usuário': activity.userNote || '',
-								'Concluído Por': activity.completedBy || '',
-								'Data/Hora de Conclusão': completedDate,
-								'Total de Itens': activity.selectedActivities?.length || 0,
-								'Itens Concluídos': activity.completedItems?.length || 0,
-								'Progresso': activity.selectedActivities?.length > 0
-									? `${activity.completedItems?.length || 0}/${activity.selectedActivities.length}`
-									: '0/0'
-							});
+								activities.push({
+									'Chave': key,
+									'Status': status,
+									'Horário Check-in': checkinDetails?.checkinTime || '',
+									'Atividades Disponíveis (Admin)': actData.selectedActivities?.join(', ') || '',
+									'Checkboxes Marcados': checkinDetails?.completedItems?.join(', ') || actData.completedItems?.join(', ') || '',
+									'Observações Admin': actData.text || '',
+									'Observações do Usuário': checkinDetails?.userNote || actData.userNote || '',
+									'Concluído Por': checkinDetails?.completedBy || actData.completedBy || '',
+									'Data/Hora de Conclusão': completedDate,
+									'Total de Itens': actData.selectedActivities?.length || 0,
+									'Itens Concluídos': (checkinDetails?.completedItems || actData.completedItems || []).length,
+									'Progresso': actData.selectedActivities?.length > 0
+										? `${(checkinDetails?.completedItems || actData.completedItems || []).length}/${actData.selectedActivities.length}`
+										: '0/0'
+								});
+							};
+
+							// Check history
+							if (activity.history && activity.history.length > 0) {
+								activity.history.forEach(h => addRow(activity, h));
+							} else {
+								addRow(activity, null);
+							}
 						}
 
 						if (activities.length > 0) {
@@ -3189,12 +3226,65 @@
 						}
 					});
 
+					// ADD TODAY'S DATA (Live Cache)
+					const todayDate = new Date().toISOString().split('T')[0];
+					const todayActivities = [];
+
+					if (activitiesCache) {
+						// Helper to add row (reused concept - we can duplicate code or refactor, duplicating for safety/speed)
+						const addRowToday = (actData, checkinDetails, key) => {
+							let status = 'Pendente';
+							if (actData.status === 'done') status = 'Concluído';
+							else if (actData.status === 'partial') status = 'Parcial';
+
+							let completedDate = '';
+							const ts = checkinDetails?.timestamp || actData?.completedAt;
+							if (ts) {
+								if (ts.seconds) completedDate = new Date(ts.seconds * 1000).toLocaleString('pt-BR');
+								else if (ts instanceof Date) completedDate = ts.toLocaleString('pt-BR');
+								else if (typeof ts === 'string') completedDate = new Date(ts).toLocaleString('pt-BR');
+							}
+
+							todayActivities.push({
+								'Chave': key,
+								'Status': status,
+								'Horário Check-in': checkinDetails?.checkinTime || '',
+								'Atividades Disponíveis (Admin)': actData.selectedActivities?.join(', ') || '',
+								'Checkboxes Marcados': checkinDetails?.completedItems?.join(', ') || actData.completedItems?.join(', ') || '',
+								'Observações Admin': actData.text || '',
+								'Observações do Usuário': checkinDetails?.userNote || actData.userNote || '',
+								'Concluído Por': checkinDetails?.completedBy || actData.completedBy || '',
+								'Data/Hora de Conclusão': completedDate,
+								'Total de Itens': actData.selectedActivities?.length || 0,
+								'Itens Concluídos': (checkinDetails?.completedItems || actData.completedItems || []).length,
+								'Progresso': actData.selectedActivities?.length > 0
+									? `${(checkinDetails?.completedItems || actData.completedItems || []).length}/${actData.selectedActivities.length}`
+									: '0/0'
+							});
+						};
+
+						for (const key in activitiesCache) {
+							const activity = activitiesCache[key];
+							// Check history
+							if (activity.history && activity.history.length > 0) {
+								activity.history.forEach(h => addRowToday(activity, h, key));
+							} else {
+								addRowToday(activity, null, key);
+							}
+						}
+					}
+
+					if (todayActivities.length > 0) {
+						const wsToday = XLSX.utils.json_to_sheet(todayActivities);
+						XLSX.utils.book_append_sheet(wb, wsToday, `${todayDate} (Hoje)`);
+					}
+
 					// Generate filename
 					const filename = `Historico_Mapa_PG_G2_Completo.xlsx`;
 
 					// Download
 					XLSX.writeFile(wb, filename);
-					alert(`✅ Histórico exportado com sucesso!\n\nArquivo: ${filename}\n\nContém ${snapshot.size} dias de dados.`);
+					alert(`✅ Histórico exportado com sucesso!\n\nArquivo: ${filename}\n\nContém ${snapshot.size} dias de histórico + dados de hoje.`);
 				})
 				.catch(err => {
 					console.error('Error exporting historical data:', err);
