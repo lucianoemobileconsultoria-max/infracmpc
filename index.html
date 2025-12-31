@@ -448,6 +448,13 @@
 			<div id="chartContainer" style="position: relative; height: 500px; display: none;">
 				<canvas id="activityChart"></canvas>
 			</div>
+			<div id="chartDetailsContainer" style="margin-top: 20px; display: none;">
+				<h3 style="color: #333; border-bottom: 2px solid #ddd; padding-bottom: 5px;">🏢 Detalhes por Empresa
+				</h3>
+				<div id="chartDetailsContent" style="max-height: 300px; overflow-y: auto;">
+					<!-- Populated dynamically -->
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -2845,6 +2852,7 @@
 					} else {
 						container.style.display = 'block';
 						renderActivityChart(data);
+						renderCompanyStats(data);
 					}
 				})
 				.catch(err => {
@@ -2853,6 +2861,135 @@
 					error.querySelector('p').textContent = `❌ Erro ao carregar dados históricos: \n${err.message} `;
 					error.style.display = 'block';
 				});
+		}
+
+		function renderCompanyStats(historyData) {
+			const container = document.getElementById('chartDetailsContainer');
+			const content = document.getElementById('chartDetailsContent');
+
+			if (!container || !content) return;
+
+			// Clear previous content
+			content.innerHTML = '';
+			container.style.display = 'block';
+
+			// Flat list of all completed activities with date and group
+			const reportData = [];
+
+			// Helper to lookup group name
+			// optimizing: create map key->group
+			const keyToGroup = {};
+			if (typeof allPlacemarksData !== 'undefined') {
+				allPlacemarksData.forEach(p => {
+					const k = sanitizeName(p.name);
+					keyToGroup[k] = p.group;
+				});
+			}
+
+			// Iterate history
+			historyData.forEach(dayRecord => {
+				const date = dayRecord.date; // YYYY-MM-DD
+				const activities = dayRecord.activities;
+
+				if (!activities) return;
+
+				// Iterate activities for this day
+				for (const key in activities) {
+					const activity = activities[key];
+
+					// Determine status and check history
+					// If activity has history array, we count each entry for that day?
+					// Actually, historyData.activities is a snapshot. 
+					// If it's a historical snapshot, it might not have the 'history' array if it was saved before the history feature.
+					// BUT for 'today' (live cache), it DOES have the history array.
+					// Let's handle both.
+
+					const group = keyToGroup[key] || 'Desconhecido';
+
+					// Logic: Count "Done" or "Partial"
+					// If using history array:
+					if (activity.history && activity.history.length > 0) {
+						activity.history.forEach(h => {
+							// Check if this history entry belongs to the date of the record?
+							// For historical snapshots, the entire snapshot IS for that date (roughly).
+							// But wait, snapshots are taken daily. 
+							// If I check in on Monday, it is in Monday's snapshot. 
+							// On Tuesday, it resets. 
+							// So iterating dayRecord.activities is correct.
+
+							// However, for the NEW 'history' feature, we might have multiple check-ins.
+							// We should count them.
+							reportData.push({
+								date: date,
+								time: h.checkinTime,
+								group: group,
+								activityName: activity.text || key,
+								status: 'Concluído (Check-in)'
+							});
+						});
+					} else {
+						// Legacy / Flat Data
+						if (activity.status === 'done' || activity.status === 'partial') {
+							reportData.push({
+								date: date,
+								time: '-',
+								group: group,
+								activityName: activity.text || key,
+								status: activity.status === 'done' ? 'Concluído' : 'Parcial'
+							});
+						}
+					}
+				}
+			});
+
+			if (reportData.length === 0) {
+				content.innerHTML = '<p style="text-align: center; color: #777;">Nenhuma atividade concluída no período.</p>';
+				return;
+			}
+
+			// Aggregate by Group per Date
+			// Structure: Date -> Group -> Count
+			// Or just a simple table sorted by Date DESC
+
+			// Sort by Date Descending
+			reportData.sort((a, b) => b.date.localeCompare(a.date));
+
+			// Generate HTML TAble
+			let tableHtml = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                    <tr style="background: #f0f0f0; border-bottom: 2px solid #ccc;">
+                        <th style="padding: 8px; text-align: left;">Data</th>
+                        <th style="padding: 8px; text-align: left;">Empresa / Grupo</th>
+                        <th style="padding: 8px; text-align: left;">Atividade</th>
+                        <th style="padding: 8px; text-align: center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+			reportData.forEach(row => {
+				const dateParts = row.date.split('-'); // YYYY-MM-DD
+				const fmtDate = `${dateParts[2]}/${dateParts[1]}`; // DD/MM
+
+				const statusColor = row.status.includes('Concluído') ? '#4CAF50' : '#FF9800';
+
+				tableHtml += `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px;"><strong>${fmtDate}</strong> <span style="font-size:11px; color:#666;">${row.time}</span></td>
+                        <td style="padding: 8px;">${row.group}</td>
+                        <td style="padding: 8px;">${row.activityName}</td>
+                        <td style="padding: 8px; text-align: center;">
+                            <span style="background: ${statusColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 11px;">
+                                ${row.status}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+			});
+
+			tableHtml += '</tbody></table>';
+			content.innerHTML = tableHtml;
 		}
 
 		function fetchHistoricalData() {
@@ -2874,7 +3011,8 @@
 								completed: docData.statistics?.completed || 0,
 								partial: docData.statistics?.partial || 0,
 								pending: docData.statistics?.pending || 0,
-								total: docData.statistics?.total || 0
+								total: docData.statistics?.total || 0,
+								activities: docData.activities || {} // Include raw activities
 							});
 						});
 
@@ -2884,9 +3022,11 @@
 						let todayPartial = 0;
 						let todayPending = 0;
 						let todayTotal = 0;
+						const todayActivitiesMap = {}; // Build map for today
 
 						for (const key in activitiesCache) {
 							const activity = activitiesCache[key];
+							todayActivitiesMap[key] = activity; // Add to map
 							todayTotal++;
 							if (activity.status === 'done') todayCompleted++;
 							else if (activity.status === 'partial') todayPartial++;
@@ -2902,7 +3042,8 @@
 								completed: todayCompleted,
 								partial: todayPartial,
 								pending: todayPending,
-								total: todayTotal
+								total: todayTotal,
+								activities: todayActivitiesMap
 							});
 						}
 
