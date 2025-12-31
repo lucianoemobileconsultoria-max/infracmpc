@@ -14,7 +14,7 @@
 	<!-- Chart.js for Historical Dashboard -->
 	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 	<!-- SheetJS for Excel Export -->
-	<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+	<script src="https://cdn.sheetjs.com/xlsx-0.no gerenciador de atividade20.1/package/dist/xlsx.full.min.js"></script>
 	<style>
 		body {
 			margin: 0;
@@ -739,11 +739,6 @@
 					currentUser = userCredential.user;
 					console.log("User logged in:", currentUser.email);
 					checkAdminRole(currentUser.email);
-
-					// 🔧 FIX: Load map after successful login
-					setTimeout(() => {
-						autoLoadMap();
-					}, 500);
 				})
 				.catch((error) => {
 					errorMsg.textContent = "Erro: " + error.message;
@@ -1338,19 +1333,69 @@
 
 		let markersMap = {}; // Key: sanitized_name -> Marker Object
 
-		function updateMarkerIcon(name, status) {
+		// --- TIME SLOT HELPERS ---
+		function getCurrentSlotTime() {
+			const now = new Date();
+			const minutes = now.getMinutes();
+			let hour = now.getHours();
+
+			// If it is minute 59, we are looking at the NEXT hour
+			if (minutes >= 59) {
+				hour = (hour + 1) % 24;
+			}
+			return hour.toString().padStart(2, '0') + ':00';
+		}
+
+		function getVisualStatus(data) {
+			if (!data) return 'pending';
+
+			// Special 'new' status override if just saved? No, rely on history.
+
+			const slot = getCurrentSlotTime();
+			const history = data.history || [];
+
+			// Check if we have a check-in for this specific slot
+			const hasEntry = history.some(h => h.checkinTime === slot);
+
+			return hasEntry ? 'done' : 'pending';
+		}
+
+		function updateMarkerIcon(name, _ignoredStatus) {
 			const key = sanitizeName(name);
 			const marker = markersMap[key];
 			if (marker) {
-				if (status === 'done') {
+				const data = getActivityData(name);
+				const currentStatus = getVisualStatus(data);
+
+				if (currentStatus === 'done') {
 					marker.setIcon(greenIcon);
-				} else if (status === 'partial') {
-					marker.setIcon(orangeIcon);
 				} else {
 					marker.setIcon(redIcon);
 				}
 			}
 		}
+
+		// Auto-Refresh Loop (Every 20 seconds)
+		setInterval(() => {
+			// We need to iterate over all markers to update them
+			// markersMap keys are sanitized names. We need the real name to call updateMarkerIcon?
+			// Actually updateMarkerIcon sanitizes the input name.
+			// So if we pass the sanitized name, it will be sanitized again (idempotent usually).
+			// Let's verify sanitizeName logic.
+			// sanitizeName = name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+			// If we pass alrady sanitized string, it stays same.
+			// However, getActivityData(name) might depend on original name if it uses local storage key?
+			// getActivityData uses sanitizeName internally.
+			// So passing sanitized key is fine for data retrieval.
+			// BUT updateMarkerIcon uses markersMap[key].
+
+			// Better iterate over allPlacemarksData which has original names.
+			if (typeof allPlacemarksData !== 'undefined') {
+				allPlacemarksData.forEach(p => {
+					updateMarkerIcon(p.name);
+				});
+			}
+		}, 20000);
 
 		function initFirebase(config) {
 			try {
@@ -1771,8 +1816,21 @@
 			}
 		}
 
+		// --- 2. DATA LOGIC ---
+
 		async function concludeActivity(name, lat, lng, note) {
 			if (!currentUser) return alert("Você precisa estar logado!");
+
+			// VALIDATION: Check-in Time
+			const timeInput = document.getElementById('checkinTimeInput');
+			let checkinTime = null;
+			if (timeInput) {
+				checkinTime = timeInput.value;
+				if (!checkinTime) {
+					alert("⚠️ Por favor, selecione o horário do check-in antes de salvar!");
+					return; // STOP
+				}
+			}
 
 			const key = sanitizeName(name);
 			const userNote = note || "";
@@ -1781,49 +1839,76 @@
 			const checkboxes = document.querySelectorAll('.user-check:checked');
 			const completedItems = Array.from(checkboxes).map(cb => cb.value);
 
-			// 🔧 FIX: Count AVAILABLE checkboxes, not saved activities
-			const allCheckboxes = document.querySelectorAll('.user-check');
-			const totalAssigned = allCheckboxes.length;
+			// VALIDATION: Must select at least one item
+			if (completedItems.length === 0) {
+				alert("⚠️ Por favor, marque pelo menos uma atividade realizada antes de salvar!");
+				return;
+			}
 
 			// Logic to determine status
-			let status = 'pending'; // Default
+			let status = 'done'; // Always green if at least one history exists
 
-			let debugMsg = "";
+			// Check against assigned activities
+			const activityData = getActivityData(name) || {}; // Changed from (lat, lng)
+			const history = activityData.history || [];
 
-			if (totalAssigned > 0) {
-				// Atividades disponíveis - usar lógica de %
-				if (completedItems.length === 0) {
-					status = 'pending';
-					debugMsg = " (Nenhum item feito)";
-				} else if (completedItems.length < totalAssigned) {
-					status = 'partial';  // 🟠 1-99% = LARANJA
-					debugMsg = ` (Parcial: ${completedItems.length} / ${totalAssigned})`;
-				} else {
-					status = 'done';     // 🟢 100% = VERDE
-					debugMsg = " (Todos feitos)";
+			// DUPLICATE CHECK
+			if (checkinTime) {
+				const alreadyExists = history.some(h => h.checkinTime === checkinTime);
+				if (alreadyExists) {
+					alert(`⚠️ Atenção: O horário ${checkinTime} já foi registrado anteriormente para esta atividade!`);
+					return;
 				}
 			}
-			// else: fica 'pending' (sem checkboxes)
 
+			// Get photo if uploaded - REMOVED
+			let photoBase64 = null;
+			/*
+			try {
+				photoBase64 = await getPhotoBase64();
+			} catch (error) {
+				console.error('Error converting photo:', error);
+				alert('⚠️ Erro ao processar foto. Continuando sem foto.');
+			}
+			*/
+
+			// Create new entry
+			const newEntry = {
+				timestamp: new Date().toISOString(),
+				checkinTime: checkinTime,
+				completedItems: completedItems,
+				userNote: userNote,
+				completedBy: currentUser.email,
+				foto: photoBase64
+			};
+
+			// Add to history
+			const newHistory = [...history, newEntry];
+
+			// Use latest entry for main display compatibility, but history is source of truth
 			const payload = {
+				...activityData, // keep existing data
 				completedItems: completedItems,
 				completedBy: currentUser.email,
 				completedAt: isOnline && db ? firebase.firestore.FieldValue.serverTimestamp() : new Date(),
 				userNote: userNote,
-				status: status,
+				status: 'done', // Always done if has history
 				name: name,
 				lat: lat,
-				lng: lng
+				lng: lng,
+				checkinTime: checkinTime, // Last checkin
+				foto: photoBase64, // Last photo
+				history: newHistory // THE HISTORY
 			};
 
 			// Update local cache immediately
 			activitiesCache[key] = { ...activitiesCache[key], ...payload };
-			updateMarkerIcon(name, status); // updateMarkerIcon converts status to icon internally
+			updateMarkerIcon(name, 'done');
 
 			// Save to localStorage
-			localStorage.setItem(key, JSON.stringify(payload));
+			localStorage.setItem(key, JSON.stringify(activitiesCache[key]));
 
-			const msg = status === 'partial' ? "Salvo como Parcial! 🟠" : (status === 'done' ? "Concluído! 🎉" : "Salvo como Pendente! ⚠️");
+			const msg = "Check-in salvo! ✅\nO formulário foi liberado para o próximo registro.";
 
 			if (db && isOnline) {
 				db.collection("activities").doc(key).set(payload, { merge: true }).then(() => {
@@ -2040,14 +2125,14 @@
 
 					// Create Marker
 					// Default to Red (Pending) unless cache says Done
+					// Create Marker
 					const activityData = getActivityData(name); // Using name instead of coordinates
+					const visualStatus = getVisualStatus(activityData);
 
-					// const isDone = activityData && activityData.status === 'done';
 					let initialIcon = redIcon;
-					if (activityData) {
-						if (activityData.status === 'done') initialIcon = greenIcon;
-						else if (activityData.status === 'partial') initialIcon = orangeIcon;
-					}
+					if (visualStatus === 'done') initialIcon = greenIcon;
+					// (Partial ignored for hourly logic)
+
 					const marker = L.marker([lat, lng], { icon: initialIcon });
 
 					// Register marker for updates using name
@@ -2210,7 +2295,7 @@
 											<div style="margin-top: 10px;">
 												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
 												<button onclick="concludeActivity(${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-													${isPartial ? ' ATUALIZAR DADOS' : '✅ ATUALIZAR DADOS'}
+													${isPartial ? 'ATUALIZAR / CONCLUIR' : '✅ MARCAR COMO CONCLUÍDO'}
 												</button>
 											</div>
 										</div>
@@ -2223,16 +2308,17 @@
 								{
 									// UNIFIED EDITABLE VIEW
 									let displayHtml = "";
-									const completedItems = data ? (data.completedItems || []) : [];
+									// Always reset form for new entry, ignore data.completedItems
+									const completedItems = [];
 
 									// 1. Build Checkbox List (Always Editable)
 									if (activitiesToShow.length > 0) {
 										displayHtml += `<div style="text-align:left; margin:5px 0; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:5px;">`;
 										activitiesToShow.forEach(item => {
-											const isChecked = completedItems.includes(item) ? 'checked' : '';
+											// Default unchecked
 											displayHtml += `
 												<label style="display:block; margin-bottom:5px; cursor:pointer;">
-													<input type="checkbox" class="user-check" value="${item}" ${isChecked}> ${item}
+													<input type="checkbox" class="user-check" value="${item}"> ${item}
 												</label>`;
 										});
 										displayHtml += `</div>`;
@@ -2243,27 +2329,46 @@
 									}
 
 									// 2. Dynamic Styling
-									let statusTitle = '<strong>⚠️ Atividade Pendente:</strong>';
-									let bgColor = '#fff3e0';
-									let borderColor = '#ff9800';
-									let btnText = '✅ ATUALIZAR DADOS';
+									let statusTitle = '<strong>⚠️ Registre seu Check-in:</strong>';
+									let bgColor = '#fff';
+									let borderColor = '#2196F3';
+									let btnText = '✅ SALVAR CHECK-IN';
 									let btnColor = '#2196F3'; // Blue
 
-									if (isDone) {
-										statusTitle = '<strong style="color: #2e7d32;">✅ ATIVIDADE CONCLUÍDA</strong>';
-										bgColor = '#e8f5e9';
-										borderColor = '#4CAF50';
-										btnText = ' ATUALIZAR DADOS';
-										btnColor = '#4CAF50';
-									} else if (isPartial) {
-										statusTitle = '<strong style="color: #ef6c00;">🟠 ATIVIDADE PARCIAL</strong>';
-										bgColor = '#fff3e0';
-										borderColor = '#ff9800';
-										btnText = ' ATUALIZAR DADOS';
-										btnColor = '#ff9800';
+									// Render History
+									let historyHtml = '';
+									if (data && data.history && data.history.length > 0) {
+										// Sort descending by checkin time (HH:MM)
+										const sortedHistory = [...data.history].sort((a, b) => {
+											const tA = a.checkinTime || "00:00";
+											const tB = b.checkinTime || "00:00";
+											return tB.localeCompare(tA);
+										});
+										historyHtml += '<div style="margin-top:15px; max-height:200px; overflow-y:auto; border-top:2px solid #ddd; padding-top:10px;">';
+										historyHtml += '<h4 style="margin:0 0 5px 0; color:#555;">📜 Histórico de Check-ins</h4>';
+
+										sortedHistory.forEach(h => {
+											const timeStr = h.checkinTime || "??:??";
+											const userStr = h.completedBy ? h.completedBy.split('@')[0] : 'User';
+											const itemsStr = (h.completedItems || []).length + " item(s)";
+											const noteStr = h.userNote ? `<i>"${h.userNote}"</i>` : '';
+
+											historyHtml += `
+                                            <div style="background:#f9f9f9; border-bottom:1px solid #eee; padding:5px; font-size:0.85em; margin-bottom:4px;">
+                                                <div><strong>🕒 ${timeStr}</strong> - <span style="color:#2196F3">${userStr}</span></div>
+                                                <div style="color:#666;">${itemsStr} ${noteStr ? '- ' + noteStr : ''}</div>
+                                            </div>`;
+										});
+
+										historyHtml += '</div>';
 									}
 
-									const date = (data && data.completedAt) ? new Date(data.completedAt.seconds * 1000).toLocaleString() : 'Data N/A';
+									// TIME OPTIONS GENERATOR
+									let timeOptionsHtml = '<option value="" disabled selected>-- Selecione o Horário --</option>';
+									for (let h = 0; h <= 23; h++) {
+										const hh = h.toString().padStart(2, '0') + ':00';
+										timeOptionsHtml += `<option value="${hh}">${hh}</option>`;
+									}
 
 									content += `
 										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
@@ -2272,18 +2377,24 @@
 											
 											${displayHtml}
 											
-											${(isDone || isPartial) ? `
-												<hr style="border: 0; border-top: 1px solid #ddd; margin: 5px 0;">
-												<small>👤 <b>${(data && data.completedBy) || 'Usuário'}</b></small><br>
-												<small>🕒 ${date}</small>
-											` : ''}
-
 											<div style="margin-top: 10px;">
-												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="${userNote}" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
+												<input type="text" id="userNoteInput" placeholder="💬 Deixe um recado (opcional)..." value="" style="width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px;">
+												
+												<!-- FIELD CHECKIN TIME -->
+												<div style="margin-bottom: 10px;">
+													<label style="display: block; margin-bottom: 5px; font-size: 0.95em; color: #333; font-weight: bold;">🕒 Horário do Check-in (Obrigatório):</label>
+													<select id="checkinTimeInput" style="width: 100%; padding: 10px; box-sizing: border-box; border: 2px solid #ddd; border-radius: 6px; background: white; font-size: 1rem; color: #333; cursor: pointer;">
+														${timeOptionsHtml}
+													</select>
+												</div>
+
+												<!-- FIELD FOTO REMOVED -->
 												
 												<button onclick="concludeActivity('${name.replace(/'/g, "\\'")}', ${lat}, ${lng}, document.getElementById('userNoteInput').value)" style="width: 100%; padding: 8px; background: ${btnColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
 													${btnText}
 												</button>
+                                                
+                                                ${historyHtml}
 											</div>
 										</div>
 									`;
