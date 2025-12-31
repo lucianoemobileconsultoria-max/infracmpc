@@ -302,13 +302,13 @@
 			style="cursor: pointer; padding: 5px 10px; background: #FF9800; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">👥
 			Usuários</button>
 		<button id="btnExport"
-			style="cursor: pointer; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📥
+			style="cursor: pointer; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin-left: 5px;">📥
 			Exportar Excel</button>
 		<button id="btnActivities"
 			style="cursor: pointer; padding: 5px 10px; background: #9C27B0; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📋
 			Tipos de Atividade</button>
 		<button id="btnChart"
-			style="cursor: pointer; padding: 5px 10px; background: #00BCD4; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📊
+			style="cursor: pointer; padding: 5px 10px; background: #00BCD4; color: white; border: none; border-radius: 4px; margin-left: 5px;">📊
 			Gráfico</button>
 		<button id="btnUploadKML"
 			style="cursor: pointer; padding: 5px 10px; background: #673AB7; color: white; border: none; border-radius: 4px; display: none; margin-left: 5px;">📂
@@ -892,9 +892,8 @@
 					userProfile = 'admin';
 					btnConfig.style.display = 'inline-block';
 					btnUsers.style.display = 'inline-block'; // Show user management
-					btnExport.style.display = 'inline-block';
+					// btnExport/btnChart are always visible now
 					btnActivities.style.display = 'inline-block';
-					btnChart.style.display = 'inline-block';
 					btnUploadKML.style.display = 'inline-block'; // Show KML upload
 					alert("Modo Admin Completo ativado! ✅\n\nAcesso total ao sistema.");
 				}
@@ -904,11 +903,10 @@
 					userProfile = 'infracmpc';
 					btnConfig.style.display = 'none';
 					btnUsers.style.display = 'none';
-					btnExport.style.display = 'inline-block'; // ✅ PERMITE EXPORTAR
+					// btnExport/btnChart always visible
 					btnActivities.style.display = 'none';
-					btnChart.style.display = 'inline-block'; // ✅ PERMITE VER GRÁFICO
 					btnUploadKML.style.display = 'none';
-					alert("Perfil INFRACMPC ativado! ✅\n\nVocê pode:\n• Ver gráficos\n• Exportar dados");
+					alert("Perfil INFRACMPC ativado! ✅");
 				}
 				// Senha incorreta
 				else {
@@ -917,9 +915,8 @@
 					userProfile = null;
 					btnConfig.style.display = 'none';
 					btnUsers.style.display = 'none';
-					btnExport.style.display = 'none';
+					// Do not hide export/chart
 					btnActivities.style.display = 'none';
-					btnChart.style.display = 'none';
 					btnUploadKML.style.display = 'none';
 					alert("Senha incorreta! ❌");
 				}
@@ -928,9 +925,8 @@
 				userProfile = null;
 				btnConfig.style.display = 'none';
 				btnUsers.style.display = 'none';
-				btnExport.style.display = 'none';
+				// Do not hide export/chart
 				btnActivities.style.display = 'none';
-				btnChart.style.display = 'none';
 				btnUploadKML.style.display = 'none'; // Hide KML upload
 			}
 			map.closePopup();
@@ -3379,6 +3375,21 @@
 			</div>`;
 			}
 
+			// Tools (Export/Chart) - For ALL users
+			html += `<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #2196F3;">
+				<h4 style="margin: 0 0 10px 0; color: #333;">📊 Ferramentas</h4>
+				<div style="display: flex; gap: 10px;">
+					<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
+						style="flex: 1; padding: 10px; background: #00BCD4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+						📊 Gráfico
+					</button>
+					<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
+						style="flex: 1; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+						📥 Excel
+					</button>
+				</div>
+			</div>`;
+
 			// Admin toggle
 			html += `<div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
 			<label style="display: flex; align-items: center; cursor: pointer;">
@@ -3399,34 +3410,13 @@
 					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #FF9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
 					👥 Usuários
 				</button>
-				<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📥 Exportar Excel
-				</button>
 				<button onclick="document.getElementById('btnActivities').click(); toggleMobileMenu();" 
 					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #9C27B0; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
 					📋 Tipos de Atividade
 				</button>
-				<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #00BCD4; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📊 Gráfico
-				</button>
 				<button onclick="document.getElementById('btnUploadKML').click(); toggleMobileMenu();" 
 					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #673AB7; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
 					📂 Upload KML
-				</button>
-			</div>`;
-			}
-			// Perfil INFRACMPC - Apenas Gráfico e Exportação
-			else if (userProfile === 'infracmpc') {
-				html += `<div style="margin-bottom: 15px;">
-				<button onclick="document.getElementById('btnExport').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📥 Exportar Excel
-				</button>
-				<button onclick="document.getElementById('btnChart').click(); toggleMobileMenu();" 
-					style="width: 100%; padding: 12px; margin-bottom: 8px; background: #00BCD4; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-					📊 Gráfico
 				</button>
 			</div>`;
 			}
