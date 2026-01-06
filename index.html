@@ -2173,6 +2173,34 @@
                             <h3 style="margin-top: 0;">${name}</h3>
                             <p style="margin: 5px 0;"><small>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}</small></p>`;
 
+						// --- SHARED HISTORY LOGIC ---
+						let historyHtml = '';
+						if (data && data.history && data.history.length > 0) {
+							// Sort descending by checkin time (HH:MM)
+							const sortedHistory = [...data.history].sort((a, b) => {
+								const tA = a.checkinTime || "00:00";
+								const tB = b.checkinTime || "00:00";
+								return tB.localeCompare(tA);
+							});
+							historyHtml += '<div style="margin-top:15px; max-height:200px; overflow-y:auto; border-top:2px solid #ddd; padding-top:10px;">';
+							historyHtml += '<h4 style="margin:0 0 5px 0; color:#555;">📜 Histórico de Check-ins</h4>';
+
+							sortedHistory.forEach(h => {
+								const timeStr = h.checkinTime || "??:??";
+								const userStr = h.completedBy ? h.completedBy.split('@')[0] : 'User';
+								const itemsStr = (h.completedItems || []).length + " item(s)";
+								const noteStr = h.userNote ? `<i>"${h.userNote}"</i>` : '';
+
+								historyHtml += `
+								<div style="background:#f9f9f9; border-bottom:1px solid #eee; padding:5px; font-size:0.85em; margin-bottom:4px;">
+									<div><strong>🕒 ${timeStr}</strong> - <span style="color:#2196F3">${userStr}</span></div>
+									<div style="color:#666;">${itemsStr} ${noteStr ? '- ' + noteStr : ''}</div>
+								</div>`;
+							});
+
+							historyHtml += '</div>';
+						}
+
 						if (isAdmin) {
 							// ADMIN VIEW
 							let checkboxesHtml = "";
@@ -2210,6 +2238,7 @@
                                         <small style="color: #666;">${isDone ? '✅ Já Concluído' : (isPartial ? '🟠 Parcial' : '⏳ Pendente')}</small>
                                     </div>
                                     ${userNote ? `<div style="margin-top:5px; border-top:1px solid #eee; padding-top:5px;"><small><strong>💬 Recado do Técnico:</strong> ${userNote}</small></div>` : ''}
+                                    ${historyHtml}
                                 </div>
                             `;
 						} else {
@@ -2342,33 +2371,8 @@
 									let btnText = '✅ SALVAR CHECK-IN';
 									let btnColor = '#2196F3'; // Blue
 
-									// Render History
-									let historyHtml = '';
-									if (data && data.history && data.history.length > 0) {
-										// Sort descending by checkin time (HH:MM)
-										const sortedHistory = [...data.history].sort((a, b) => {
-											const tA = a.checkinTime || "00:00";
-											const tB = b.checkinTime || "00:00";
-											return tB.localeCompare(tA);
-										});
-										historyHtml += '<div style="margin-top:15px; max-height:200px; overflow-y:auto; border-top:2px solid #ddd; padding-top:10px;">';
-										historyHtml += '<h4 style="margin:0 0 5px 0; color:#555;">📜 Histórico de Check-ins</h4>';
-
-										sortedHistory.forEach(h => {
-											const timeStr = h.checkinTime || "??:??";
-											const userStr = h.completedBy ? h.completedBy.split('@')[0] : 'User';
-											const itemsStr = (h.completedItems || []).length + " item(s)";
-											const noteStr = h.userNote ? `<i>"${h.userNote}"</i>` : '';
-
-											historyHtml += `
-                                            <div style="background:#f9f9f9; border-bottom:1px solid #eee; padding:5px; font-size:0.85em; margin-bottom:4px;">
-                                                <div><strong>🕒 ${timeStr}</strong> - <span style="color:#2196F3">${userStr}</span></div>
-                                                <div style="color:#666;">${itemsStr} ${noteStr ? '- ' + noteStr : ''}</div>
-                                            </div>`;
-										});
-
-										historyHtml += '</div>';
-									}
+									// Render History (MOVED TO SHARED SCOPE)
+									// let historyHtml = '';
 
 									// TIME OPTIONS GENERATOR
 									let timeOptionsHtml = '<option value="" disabled selected>-- Selecione o Horário --</option>';
