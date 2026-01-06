@@ -1787,8 +1787,8 @@
 				payload.completedItems = existing.completedItems;
 			}
 
-			// Update cache immediately (optimistic update)
-			activitiesCache[key] = payload;
+			// Update cache immediately (optimistic update) - MERGE to avoid losing history
+			activitiesCache[key] = { ...activitiesCache[key], ...payload };
 			updateMarkerIcon(name, payload.status);
 
 			// Save to LocalStorage (always, for offline support)
@@ -1904,12 +1904,14 @@
 				lat: lat,
 				lng: lng,
 				checkinTime: checkinTime, // Last checkin
-				foto: photoBase64, // Last photo
-				history: newHistory // THE HISTORY
+				foto: photoBase64 // Last photo
+				// History will be handled differently for Online vs Offline
 			};
 
-			// Update local cache immediately
-			activitiesCache[key] = { ...activitiesCache[key], ...payload };
+			// Update local cache immediately (optimistic update)
+			// We use the FULL new history for local display
+			const localPayload = { ...payload, history: newHistory };
+			activitiesCache[key] = { ...activitiesCache[key], ...localPayload };
 			updateMarkerIcon(name, 'done');
 
 			// Save to localStorage
@@ -1918,16 +1920,22 @@
 			const msg = "Check-in salvo! ✅\nO formulário foi liberado para o próximo registro.";
 
 			if (db && isOnline) {
-				db.collection("activities").doc(key).set(payload, { merge: true }).then(() => {
+				// ONLINE: Use arrayUnion to safely append to history without overwriting
+				const onlinePayload = {
+					...payload,
+					history: firebase.firestore.FieldValue.arrayUnion(newEntry)
+				};
+
+				db.collection("activities").doc(key).set(onlinePayload, { merge: true }).then(() => {
 					alert(msg);
 					map.closePopup();
 				}).catch(err => {
 					console.error(err);
-					// Add to offline queue
+					// Fallback to offline queue if write fails
 					addToSyncQueue({
 						type: 'completeActivity',
 						key: key,
-						data: payload
+						data: localPayload // Use full array for offline sync
 					});
 					alert(msg + "\n⚠️ Será sincronizado quando a internet voltar.");
 					map.closePopup();
@@ -1937,7 +1945,7 @@
 				addToSyncQueue({
 					type: 'completeActivity',
 					key: key,
-					data: payload
+					data: localPayload // Use full array for offline sync
 				});
 				alert(msg + "\n💾 Salvo offline!");
 				map.closePopup();
