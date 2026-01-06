@@ -206,6 +206,22 @@
 			max-height: 60vh;
 			overflow-y: auto;
 		}
+
+		/* Custom Tooltip Style */
+		.custom-tooltip-style {
+			background: rgba(255, 255, 255, 0.9);
+			border: 1px solid #999;
+			border-radius: 3px;
+			padding: 2px 4px;
+			font-size: 10px;
+			line-height: 11px;
+			color: #333;
+			font-weight: bold;
+			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+			white-space: normal;
+			max-width: 100px;
+			text-align: center;
+		}
 	</style>
 </head>
 
@@ -2149,6 +2165,14 @@
 					// (Partial ignored for hourly logic)
 
 					const marker = L.marker([lat, lng], { icon: initialIcon });
+
+					// Add Permanent Tooltip
+					marker.bindTooltip(name, {
+						permanent: true,
+						direction: 'top',
+						className: 'custom-tooltip-style',
+						offset: [0, -35] // Adjust to sit above the marker
+					});
 
 					// Register marker for updates using name
 					const markerKey = sanitizeName(name);
