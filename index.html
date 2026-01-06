@@ -1431,8 +1431,8 @@
 							activitiesCache[change.doc.id] = data; // Store full object now
 
 							// Update Icon Realtime
-							if (data.lat && data.lng) {
-								updateMarkerIcon(data.lat, data.lng, data.status);
+							if (data.name) {
+								updateMarkerIcon(data.name);
 							}
 						});
 						// Update stats after data changes
@@ -2099,7 +2099,7 @@
 			for (let i = 0; i < placemarks.length; i++) {
 				const placemark = placemarks[i];
 				const nameNode = placemark.getElementsByTagName("name")[0];
-				const name = nameNode ? nameNode.textContent : "Sem Nome";
+				const name = nameNode ? nameNode.textContent.trim() : "Sem Nome";
 				const point = placemark.getElementsByTagName("Point")[0];
 
 				if (point) {
