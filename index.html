@@ -1397,6 +1397,10 @@
 				allPlacemarksData.forEach(p => {
 					updateMarkerIcon(p.name);
 				});
+				// Also update dashboard stats
+				if (typeof updateStats === 'function') {
+					updateStats();
+				}
 			}
 		}, 20000);
 
@@ -2512,7 +2516,9 @@
 					if (layers[item.group] && map.hasLayer(layers[item.group])) {
 						total++;
 						const data = getActivityData(item.name); // Using name instead of coordinates
-						if (data && data.status === 'done') {
+						// FIX: Use getVisualStatus to match map markers (time-sensitive)
+						const visualStatus = getVisualStatus(data);
+						if (visualStatus === 'done') {
 							completed++;
 						}
 					}
