@@ -221,6 +221,26 @@
 			white-space: normal;
 			max-width: 100px;
 			text-align: center;
+			text-align: center;
+		}
+
+		/* Enlarge Popup Close Button */
+		.leaflet-popup-close-button {
+			width: 36px !important;
+			height: 36px !important;
+			font-size: 24px !important;
+			line-height: 36px !important;
+			color: #555 !important;
+			font-weight: bold !important;
+			background: white !important;
+			border-radius: 50% !important;
+			box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
+			top: 10px !important;
+			right: 10px !important;
+			display: flex !important;
+			align-items: center !important;
+			justify-content: center !important;
+			z-index: 1000 !important;
 		}
 	</style>
 </head>
@@ -2416,7 +2436,7 @@
 									content += `
 										<div style="background: ${bgColor}; padding: 10px; border-radius: 4px; margin: 10px 0; border: 1px solid ${borderColor};">
 											${statusTitle}<br>
-											<div style="margin-bottom:5px;"><small>Marque os itens realizados:</small></div>
+											<div style="margin-bottom:5px;"><strong>Itens realizados:</strong></div>
 											
 											${displayHtml}
 											
