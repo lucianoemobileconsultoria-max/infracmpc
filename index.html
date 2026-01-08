@@ -1897,11 +1897,33 @@
 			const activityData = getActivityData(name) || {}; // Changed from (lat, lng)
 			const history = activityData.history || [];
 
-			// DUPLICATE CHECK
+			// DUPLICATE CHECK (Fixed to allow same time on different days)
 			if (checkinTime) {
-				const alreadyExists = history.some(h => h.checkinTime === checkinTime);
+				const todayVal = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+
+				const alreadyExists = history.some(h => {
+					let hDate = '';
+					// Handle different timestamp formats
+					if (h.timestamp) {
+						if (h.timestamp.seconds) { // Firestore Timestamp
+							hDate = new Date(h.timestamp.seconds * 1000).toISOString().split('T')[0];
+						} else if (typeof h.timestamp === 'string') { // ISO String
+							// Use split safely if it's ISO, otherwise try date parse
+							if (h.timestamp.includes('T')) {
+								hDate = h.timestamp.split('T')[0];
+							} else {
+								try { hDate = new Date(h.timestamp).toISOString().split('T')[0]; } catch (e) { }
+							}
+						} else if (h.timestamp instanceof Date) { // JS Date
+							hDate = h.timestamp.toISOString().split('T')[0];
+						}
+					}
+					// Consider duplicate only if SAME DATE and SAME TIME
+					return hDate === todayVal && h.checkinTime === checkinTime;
+				});
+
 				if (alreadyExists) {
-					alert(`⚠️ Atenção: O horário ${checkinTime} já foi registrado anteriormente para esta atividade!`);
+					alert(`⚠️ Atenção: O horário ${checkinTime} já foi registrado HOJE para esta atividade!`);
 					return;
 				}
 			}
